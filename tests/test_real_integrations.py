@@ -69,6 +69,7 @@ class RealIntegrationContractTests(unittest.TestCase):
                 datetime(2026, 8, 18, tzinfo=ZoneInfo("Asia/Hong_Kong")),
             )
         self.assertNotIn("private-token", json.dumps(result))
+        self.assertEqual(result["queries"][0], {"provider": "marketaux", "symbol": "CRWD", "status": "success", "returned": 0})
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from app.modules.loader import ModuleConfig
-from app.schemas.models import ResearchTaskResult, TaskStatus, TaskWarning
+from app.schemas.models import CheckStatus, ResearchTaskResult, TaskStatus, TaskWarning
 
 
 class ValidationFailure(ValueError):
@@ -207,4 +207,9 @@ def validate_result(
         referenced_source_ids.update(check.source_ids)
     result.sources = [source for source in result.sources if source.source_id in referenced_source_ids]
     result.warnings = warnings
+    result.status = (
+        TaskStatus.PARTIAL
+        if result.errors or any(check.status == CheckStatus.DATA_UNAVAILABLE for check in result.research_checks)
+        else TaskStatus.SUCCESS
+    )
     return result

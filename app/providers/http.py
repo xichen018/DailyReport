@@ -158,6 +158,7 @@ class FreeNewsProvider:
     def get_task_data(self, module: ModuleConfig, start_at: datetime, end_at: datetime) -> dict[str, Any]:
         articles: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
+        queries: list[dict[str, Any]] = []
         if module.instruments and self.marketaux_token:
             for instrument in module.instruments:
                 query = urllib.parse.urlencode({
@@ -167,7 +168,9 @@ class FreeNewsProvider:
                 })
                 try:
                     data = json.loads(_get(f"https://api.marketaux.com/v1/news/all?{query}", self.timeout))
-                    for item in data.get("data", []):
+                    returned = data.get("data", [])
+                    queries.append({"provider": "marketaux", "symbol": instrument.symbol, "status": "success", "returned": len(returned)})
+                    for item in returned:
                         articles.append({
                             "instrument_id": instrument.instrument_id, "headline": item.get("title"),
                             "description": item.get("description"), "published_at": _iso_published_at(item.get("published_at")),
@@ -176,11 +179,12 @@ class FreeNewsProvider:
                         })
                 except Exception as exc:
                     errors.append(_error("marketaux", exc))
+                    queries.append({"provider": "marketaux", "symbol": instrument.symbol, "status": "failed", "returned": 0})
         elif module.instruments:
             errors.append({"provider": "marketaux", "error_type": "MissingSecret", "message": "marketaux_api_token unavailable"})
 
-        queries = list(module.search_terms_zh) + list(module.search_terms_en)
-        for query_text in queries:
+        search_queries = list(module.search_terms_zh) + list(module.search_terms_en)
+        for query_text in search_queries:
             url = "https://news.google.com/rss/search?" + urllib.parse.urlencode({"q": query_text, "hl": "zh-CN", "gl": "HK", "ceid": "HK:zh-Hans"})
             try:
                 root = ET.fromstring(_get(url, self.timeout))
@@ -192,7 +196,7 @@ class FreeNewsProvider:
                     })
             except Exception as exc:
                 errors.append(_error("google-news-rss", exc))
-        return {"provider": self.name, "articles": articles, "errors": errors, "window": {"start_at": start_at.isoformat(), "end_at": end_at.isoformat()}}
+        return {"provider": self.name, "articles": articles, "queries": queries, "errors": errors, "window": {"start_at": start_at.isoformat(), "end_at": end_at.isoformat()}}
 
 
 class FredMacroDataProvider:
