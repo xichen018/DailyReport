@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from app.integrations.secrets import load_secrets
 from app.integrations.openai_responses import _gateway_compatible_strict_schema
 from app.modules.loader import load_module_configs
-from app.providers.http import FreeMarketDataProvider, FreeNewsProvider
+from app.providers.http import FreeMarketDataProvider, FreeNewsProvider, _iso_published_at
 from app.settings import Settings
 
 
@@ -19,6 +19,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RealIntegrationContractTests(unittest.TestCase):
+    def test_rss_datetime_is_normalized_to_iso_8601(self) -> None:
+        self.assertEqual(
+            _iso_published_at("Tue, 18 Aug 2026 11:40:48 GMT"),
+            "2026-08-18T11:40:48+00:00",
+        )
+
     def test_gateway_schema_is_strict_without_unsupported_formats(self) -> None:
         schema = _gateway_compatible_strict_schema()
         serialized = json.dumps(schema)

@@ -7,6 +7,7 @@ import re
 import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -35,6 +36,18 @@ def _get(url: str, timeout: float) -> bytes:
 
 def _error(provider: str, exc: Exception) -> dict[str, str]:
     return {"provider": provider, "error_type": type(exc).__name__, "message": str(exc).split("api_token=")[0]}
+
+
+def _iso_published_at(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        parsed = parsedate_to_datetime(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat()
 
 
 class FreeMarketDataProvider:
@@ -157,7 +170,7 @@ class FreeNewsProvider:
                     for item in data.get("data", []):
                         articles.append({
                             "instrument_id": instrument.instrument_id, "headline": item.get("title"),
-                            "description": item.get("description"), "published_at": item.get("published_at"),
+                            "description": item.get("description"), "published_at": _iso_published_at(item.get("published_at")),
                             "publisher": item.get("source"), "url": item.get("url"), "provider": "marketaux",
                             "entities": item.get("entities", []),
                         })
@@ -174,7 +187,7 @@ class FreeNewsProvider:
                 for item in root.findall("./channel/item")[:5]:
                     articles.append({
                         "instrument_id": None, "headline": item.findtext("title"), "description": item.findtext("description"),
-                        "published_at": item.findtext("pubDate"), "publisher": item.findtext("source") or "Google News",
+                        "published_at": _iso_published_at(item.findtext("pubDate")), "publisher": item.findtext("source") or "Google News",
                         "url": item.findtext("link"), "provider": "google-news-rss", "query": query_text,
                     })
             except Exception as exc:
