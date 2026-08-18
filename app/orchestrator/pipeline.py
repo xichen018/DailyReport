@@ -34,6 +34,7 @@ class DailyReportPipeline:
         responses_client: Any,
         output_root: Path | None = None,
         max_workers: int = 6,
+        task_ids: set[str] | None = None,
     ) -> None:
         self.project_root = project_root
         self.providers = providers
@@ -41,7 +42,15 @@ class DailyReportPipeline:
         self.output_root = output_root or project_root / "data" / "runs"
         self.max_workers = max_workers
         self.prompt_builder = PromptBuilder(project_root / "app" / "prompts")
-        self.modules = load_module_configs(project_root / "app" / "modules")
+        all_modules = load_module_configs(project_root / "app" / "modules")
+        if task_ids:
+            known = {module.task_id for module in all_modules}
+            unknown = task_ids - known
+            if unknown:
+                raise ValueError(f"unknown task ids: {sorted(unknown)}")
+            self.modules = [module for module in all_modules if module.task_id in task_ids]
+        else:
+            self.modules = all_modules
 
     def _failed_result(self, module: ModuleConfig, context: Any, stage: str, exc: Exception) -> ResearchTaskResult:
         return ResearchTaskResult(

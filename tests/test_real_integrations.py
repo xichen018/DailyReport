@@ -9,6 +9,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from app.integrations.secrets import load_secrets
+from app.integrations.openai_responses import _gateway_compatible_strict_schema
 from app.modules.loader import load_module_configs
 from app.providers.http import FreeMarketDataProvider, FreeNewsProvider
 from app.settings import Settings
@@ -18,6 +19,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RealIntegrationContractTests(unittest.TestCase):
+    def test_gateway_schema_is_strict_without_unsupported_formats(self) -> None:
+        schema = _gateway_compatible_strict_schema()
+        serialized = json.dumps(schema)
+        self.assertNotIn('"format"', serialized)
+        self.assertFalse(schema["additionalProperties"])
+        self.assertEqual(set(schema["required"]), set(schema["properties"]))
+
     def test_settings_support_compatible_base_url_without_storing_key(self) -> None:
         with patch.dict(os.environ, {"OPENAI_BASE_URL": "https://gateway.example/v1", "OPENAI_API_KEY": "test-secret"}, clear=True):
             settings = Settings.from_env("real")

@@ -49,6 +49,7 @@ def command_run(args: argparse.Namespace) -> int:
         providers=providers,
         responses_client=client,
         output_root=Path(args.output_root).resolve() if args.output_root else None,
+        task_ids=set(args.task) if args.task else None,
     )
     result = pipeline.run(scheduled_for=_parse_as_of(args.as_of))
     print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -88,6 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--as-of", help="ISO 8601 run time; defaults to current HKT")
     run.add_argument("--output-root")
     run.add_argument("--fail-task", action="append", default=[], help="inject a task failure")
+    run.add_argument("--task", action="append", default=[], help="run only this task_id; may be repeated")
     run.set_defaults(func=command_run)
     health = subparsers.add_parser("healthcheck")
     health.add_argument("--mode", choices=("mock", "real"), default=None)

@@ -57,6 +57,20 @@ class PipelineTests(unittest.TestCase):
             failed = next(item for item in report["tasks"] if item["task_id"] == "cybersecurity")
             self.assertEqual(failed["errors"][0]["code"], "MOCK_TASK_FAILURE")
 
+    def test_selected_task_runs_one_isolated_request(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            client = MockResponsesClient()
+            pipeline = DailyReportPipeline(
+                ROOT,
+                MockProviderBundle(),
+                client,
+                output_root=Path(directory),
+                task_ids={"hk_equities"},
+            )
+            result = pipeline.run(datetime(2026, 8, 18, 8, 15, 2, tzinfo=ZoneInfo("Asia/Hong_Kong")))
+            self.assertEqual(result["tasks"], {"hk_equities": "success"})
+            self.assertEqual(len(client.calls), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
