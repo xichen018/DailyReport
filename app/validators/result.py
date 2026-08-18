@@ -133,6 +133,48 @@ def validate_result(
             missing = set(price.source_ids) - source_ids
             if missing:
                 raise ValidationFailure(f"price has unknown source ids: {sorted(missing)}")
+            if provider_data is not None:
+                candidates = market_candidates.get(instrument.instrument_id, [])
+                matched_candidate = None
+                for item in candidates:
+                    provider_value = item.get("previous_value") if price.kind == "previous_close" else item.get("value")
+                    if provider_value is None or abs(price.value - Decimal(str(provider_value))) > Decimal("0.01"):
+                        continue
+                    if (
+                        price.kind != "previous_close"
+                        and price.previous_value is not None
+                        and item.get("previous_value") is not None
+                        and abs(price.previous_value - Decimal(str(item["previous_value"]))) > Decimal("0.01")
+                    ):
+                        continue
+                    matched_candidate = item
+                    break
+                if matched_candidate is None:
+                    raise ValidationFailure(f"price not found in provider data: {instrument.symbol}")
+
+                authoritative_value = (
+                    matched_candidate.get("previous_value")
+                    if price.kind == "previous_close"
+                    else matched_candidate.get("value")
+                )
+                normalized = price.value != Decimal(str(authoritative_value))
+                price.value = Decimal(str(authoritative_value))
+                if (
+                    price.kind != "previous_close"
+                    and price.previous_value is not None
+                    and matched_candidate.get("previous_value") is not None
+                ):
+                    authoritative_previous = Decimal(str(matched_candidate["previous_value"]))
+                    normalized = normalized or price.previous_value != authoritative_previous
+                    price.previous_value = authoritative_previous
+                if normalized:
+                    warnings.append(
+                        TaskWarning(
+                            code="PRICE_PROVIDER_NORMALIZED",
+                            message_zh=f"已按行情源原始精度规范化价格：{instrument.symbol} {price.kind}",
+                            field_path=f"instruments.{instrument.instrument_id}.prices.{price.kind}",
+                        )
+                    )
             if price.previous_value is not None:
                 expected_value = (price.value - price.previous_value).quantize(Decimal("0.01"))
                 expected_pct = ((price.value - price.previous_value) / price.previous_value * Decimal("100")).quantize(Decimal("0.01"))
@@ -150,20 +192,6 @@ def validate_result(
                             field_path=f"instruments.{instrument.instrument_id}.prices.{price.kind}",
                         )
                     )
-            if provider_data is not None:
-                candidates = market_candidates.get(instrument.instrument_id, [])
-                matched = any(
-                    abs(price.value - Decimal(str(item["value"]))) <= Decimal("0.01")
-                    and (
-                        price.previous_value is None
-                        or item.get("previous_value") is None
-                        or abs(price.previous_value - Decimal(str(item["previous_value"]))) <= Decimal("0.01")
-                    )
-                    for item in candidates
-                )
-                if not matched:
-                    raise ValidationFailure(f"price not found in provider data: {instrument.symbol}")
-
         deduped = []
         seen: set[tuple[str, str]] = set()
         source_map = {source.source_id: source for source in result.sources}

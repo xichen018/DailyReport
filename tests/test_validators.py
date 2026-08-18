@@ -76,6 +76,37 @@ class ValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationFailure, "price not found in provider data"):
             validate_result(broken, self.module, self.provider_data)
 
+    def test_previous_close_matches_provider_previous_value(self) -> None:
+        result = ResearchTaskResult.model_validate(self.raw)
+        price = result.instruments[0].prices[0]
+        provider_record = self.provider_data["market"]["records"][0]
+        price.kind = "previous_close"
+        price.value = Decimal(str(provider_record["previous_value"]))
+        price.previous_value = None
+        price.change_value = None
+        price.change_pct = None
+        validated = validate_result(result, self.module, self.provider_data)
+        self.assertEqual(validated.instruments[0].prices[0].value, Decimal(str(provider_record["previous_value"])))
+
+    def test_provider_precision_is_restored_before_change_recalculation(self) -> None:
+        result = ResearchTaskResult.model_validate(self.raw)
+        price = result.instruments[0].prices[0]
+        provider_record = self.provider_data["market"]["records"][0]
+        provider_record["value"] = 8.085000038146973
+        provider_record["previous_value"] = 8.100000381469727
+        price.value = Decimal("8.09")
+        price.previous_value = Decimal("8.10")
+        price.change_value = Decimal("-0.02")
+        price.change_pct = Decimal("-0.19")
+
+        validated = validate_result(result, self.module, self.provider_data)
+        normalized = validated.instruments[0].prices[0]
+        self.assertEqual(normalized.value, Decimal("8.085000038146973"))
+        self.assertEqual(normalized.previous_value, Decimal("8.100000381469727"))
+        self.assertEqual(normalized.change_value, Decimal("-0.02"))
+        self.assertEqual(normalized.change_pct, Decimal("-0.19"))
+        self.assertTrue(any(item.code == "PRICE_PROVIDER_NORMALIZED" for item in validated.warnings))
+
     def test_unexpected_research_check_is_rejected(self) -> None:
         broken = ResearchTaskResult.model_validate(self.raw)
         extra = broken.research_checks[0].model_copy(
