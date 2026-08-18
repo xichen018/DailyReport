@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 
 class StrictModel(BaseModel):
@@ -98,6 +98,15 @@ class InstrumentResult(StrictModel):
     prices: list[PricePoint] = Field(default_factory=list)
     news: list[NewsItem] = Field(default_factory=list)
 
+    @field_validator("trading_date", mode="before")
+    @classmethod
+    def normalize_trading_date(cls, value: object) -> object:
+        if isinstance(value, str) and "T" in value:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+        if isinstance(value, datetime):
+            return value.date()
+        return value
+
 
 class MacroObservation(StrictModel):
     metric_id: str
@@ -117,6 +126,15 @@ class RelativeObservation(StrictModel):
     numerator_value: Decimal
     denominator_value: Decimal
     ratio: Decimal
+
+    @field_validator("as_of", mode="before")
+    @classmethod
+    def normalize_as_of_date(cls, value: object) -> object:
+        if isinstance(value, str) and "T" in value:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+        if isinstance(value, datetime):
+            return value.date()
+        return value
 
 
 class RelativeMetric(StrictModel):

@@ -13,12 +13,29 @@ from app.integrations.openai_responses import _gateway_compatible_strict_schema
 from app.modules.loader import load_module_configs
 from app.providers.http import FreeMarketDataProvider, FreeNewsProvider, _iso_published_at
 from app.settings import Settings
+from app.schemas.models import InstrumentResult
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class RealIntegrationContractTests(unittest.TestCase):
+    def test_model_datetime_is_normalized_for_trading_date(self) -> None:
+        result = InstrumentResult.model_validate(
+            {
+                "instrument_id": "bitcoin_binance",
+                "symbol": "BTCUSDT",
+                "name": "Bitcoin / Tether",
+                "asset_class": "crypto",
+                "exchange": "BINANCE",
+                "currency": "USDT",
+                "trading_date": "2026-08-18T23:39:27+08:00",
+                "prices": [],
+                "news": [],
+            }
+        )
+        self.assertEqual(result.trading_date.isoformat(), "2026-08-18")
+
     def test_rss_datetime_is_normalized_to_iso_8601(self) -> None:
         self.assertEqual(
             _iso_published_at("Tue, 18 Aug 2026 11:40:48 GMT"),
