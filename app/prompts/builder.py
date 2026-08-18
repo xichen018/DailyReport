@@ -4,6 +4,7 @@ from pathlib import Path
 
 from app.modules.loader import ModuleConfig
 from app.schemas.models import RunContext
+from app.validators.result import required_research_check_plan
 
 
 class PromptBuilder:
@@ -30,6 +31,7 @@ class PromptBuilder:
                 },
                 "no_news_policy": module.no_news_policy,
                 "background_policy": module.background_policy,
+                "required_research_checks": required_research_check_plan(module),
                 "instruments": [instrument.__dict__ for instrument in module.instruments],
             },
             "run_context": context.model_dump(mode="json"),

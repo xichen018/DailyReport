@@ -34,6 +34,7 @@ class PipelineTests(unittest.TestCase):
                 self.assertNotIn("previous_response_id", call["prompt"])
                 self.assertIn("news_categories", call["prompt"]["module"])
                 self.assertIn("source_requirements", call["prompt"]["module"])
+                self.assertTrue(call["prompt"]["module"]["required_research_checks"])
             self.assertTrue((run_dir / "merged" / "report_input.json").is_file())
             self.assertTrue((run_dir / "reports" / "daily-report.html").is_file())
             self.assertTrue((run_dir / "reports" / "daily-report.pdf").is_file())

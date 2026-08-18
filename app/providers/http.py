@@ -3,10 +3,12 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -90,6 +92,23 @@ class FreeMarketDataProvider:
             "as_of": f"{current['Date']}T00:00:00+00:00", "source_url": url, "provider": "stooq",
         }]
 
+    def _tencent_hk(self, instrument_id: str, symbol: str) -> list[dict[str, Any]]:
+        numeric = symbol.split(".", 1)[0].zfill(5)
+        url = f"https://qt.gtimg.cn/q=hk{numeric}"
+        text = _get(url, self.timeout).decode("gb18030", errors="replace")
+        match = re.search(r'="([^"]+)"', text)
+        if match is None:
+            raise ValueError(f"invalid Tencent quote for {symbol}")
+        fields = match.group(1).split("~")
+        if len(fields) < 33:
+            raise ValueError(f"incomplete Tencent quote for {symbol}")
+        as_of = datetime.strptime(fields[30], "%Y/%m/%d %H:%M:%S").replace(tzinfo=ZoneInfo("Asia/Hong_Kong"))
+        return [{
+            "instrument_id": instrument_id, "symbol": symbol, "kind": "close_crosscheck",
+            "value": fields[3], "previous_value": fields[4], "change_pct": fields[32], "currency": "HKD",
+            "as_of": as_of.isoformat(), "source_url": url, "provider": "tencent-quote",
+        }]
+
     def get_task_data(self, module: ModuleConfig, as_of: datetime) -> dict[str, Any]:
         records: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
@@ -103,6 +122,11 @@ class FreeMarketDataProvider:
                 records.extend(self._yahoo(instrument.instrument_id, instrument.symbol, instrument.currency))
             except Exception as exc:
                 errors.append(_error("yahoo-chart", exc))
+            if instrument.exchange == "HKEX":
+                try:
+                    records.extend(self._tencent_hk(instrument.instrument_id, instrument.symbol))
+                except Exception as exc:
+                    errors.append(_error("tencent-quote", exc))
             if instrument.symbol in STOOQ_SYMBOLS:
                 try:
                     records.extend(self._stooq(instrument.instrument_id, instrument.symbol, instrument.currency))
@@ -125,7 +149,8 @@ class FreeNewsProvider:
             for instrument in module.instruments:
                 query = urllib.parse.urlencode({
                     "symbols": instrument.symbol, "filter_entities": "true", "language": "en", "limit": 3,
-                    "published_after": start_at.astimezone(timezone.utc).isoformat(), "api_token": self.marketaux_token,
+                    "published_after": start_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+                    "api_token": self.marketaux_token,
                 })
                 try:
                     data = json.loads(_get(f"https://api.marketaux.com/v1/news/all?{query}", self.timeout))

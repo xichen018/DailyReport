@@ -68,6 +68,15 @@ class ValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationFailure, "price not found in provider data"):
             validate_result(broken, self.module, self.provider_data)
 
+    def test_unexpected_research_check_is_rejected(self) -> None:
+        broken = ResearchTaskResult.model_validate(self.raw)
+        extra = broken.research_checks[0].model_copy(
+            update={"check_id": "extra", "requirement_zh": "未配置检查"}
+        )
+        broken.research_checks.append(extra)
+        with self.assertRaisesRegex(ValidationFailure, "unexpected research checks"):
+            validate_result(broken, self.module)
+
 
 if __name__ == "__main__":
     unittest.main()

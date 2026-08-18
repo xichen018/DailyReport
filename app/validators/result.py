@@ -16,18 +16,40 @@ class ValidationFailure(ValueError):
 TRACKING_PARAMS = {"fbclid", "gclid", "mc_cid", "mc_eid"}
 
 
-def required_research_checks(module: ModuleConfig) -> set[tuple[str, str, str]]:
-    required = {("price", module.task_id, item) for item in module.price_checks}
+def required_research_check_plan(module: ModuleConfig) -> list[dict[str, str]]:
+    plan: list[dict[str, str]] = []
+
+    def add(requirement_type: str, scope_id: str, requirement_zh: str) -> None:
+        plan.append(
+            {
+                "check_id": f"required_{len(plan) + 1}",
+                "requirement_type": requirement_type,
+                "scope_id": scope_id,
+                "requirement_zh": requirement_zh,
+            }
+        )
+
+    for item in module.price_checks:
+        add("price", module.task_id, item)
     news_scopes = [item.instrument_id for item in module.instruments] or [module.task_id]
-    required.update(("news", scope, item) for scope in news_scopes for item in module.news_categories)
-    required.update(("industry", module.task_id, item) for item in module.industry_topics)
-    required.update(("trigger", module.task_id, item) for item in module.triggered_checks)
-    required.update(
-        ("instrument_focus", instrument.instrument_id, item)
-        for instrument in module.instruments
-        for item in instrument.focus
-    )
-    return required
+    for scope in news_scopes:
+        for item in module.news_categories:
+            add("news", scope, item)
+    for item in module.industry_topics:
+        add("industry", module.task_id, item)
+    for item in module.triggered_checks:
+        add("trigger", module.task_id, item)
+    for instrument in module.instruments:
+        for item in instrument.focus:
+            add("instrument_focus", instrument.instrument_id, item)
+    return plan
+
+
+def required_research_checks(module: ModuleConfig) -> set[tuple[str, str, str]]:
+    return {
+        (item["requirement_type"], item["scope_id"], item["requirement_zh"])
+        for item in required_research_check_plan(module)
+    }
 
 
 def canonical_url(value: str) -> str:
@@ -67,6 +89,9 @@ def validate_result(
     missing_checks = required_checks - actual_checks
     if missing_checks:
         raise ValidationFailure(f"required research checks missing: {sorted(missing_checks)}")
+    unexpected_checks = actual_checks - required_checks
+    if unexpected_checks:
+        raise ValidationFailure(f"unexpected research checks: {sorted(unexpected_checks)}")
     if len(actual_checks) != len(result.research_checks):
         raise ValidationFailure("duplicate research check")
     for check in result.research_checks:

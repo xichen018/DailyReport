@@ -43,6 +43,16 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual(record["provider"], "binance")
         self.assertEqual(record["value"], "65000")
 
+    def test_tencent_hk_response_is_normalized(self) -> None:
+        fields = [""] * 33
+        fields[3], fields[4], fields[30], fields[32] = "39.000", "40.080", "2026/08/18 16:08:06", "-2.69"
+        payload = f'v_hk01772="{"~".join(fields)}";'.encode("gb18030")
+        with patch("app.providers.http._get", return_value=payload):
+            record = FreeMarketDataProvider()._tencent_hk("ganfeng_h", "1772.HK")[0]
+        self.assertEqual(record["provider"], "tencent-quote")
+        self.assertEqual(record["value"], "39.000")
+        self.assertEqual(record["previous_value"], "40.080")
+
     def test_marketaux_token_is_not_returned_in_provider_bundle(self) -> None:
         module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "cybersecurity")
         payloads = [json.dumps({"data": []}).encode(), b"<rss><channel></channel></rss>", b"<rss><channel></channel></rss>", b"<rss><channel></channel></rss>"]
