@@ -11,7 +11,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase.ttfonts import TTFError, TTFont
 from reportlab.platypus import KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.schemas.models import ResearchTaskResult, RunContext, TaskStatus
@@ -168,14 +168,22 @@ def _register_pdf_font() -> str:
         return font_name
     candidates = [
         Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
+        Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
+        Path("/usr/share/fonts/truetype/arphic/uming.ttc"),
         Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
         Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
     ]
-    font_path = next((path for path in candidates if path.is_file()), None)
-    if font_path is None:
-        raise RuntimeError("No embeddable CJK font found; install fonts-noto-cjk")
-    pdfmetrics.registerFont(TTFont(font_name, str(font_path), subfontIndex=0))
-    return font_name
+    incompatible: list[str] = []
+    for font_path in candidates:
+        if not font_path.is_file():
+            continue
+        try:
+            pdfmetrics.registerFont(TTFont(font_name, str(font_path), subfontIndex=0))
+            return font_name
+        except TTFError:
+            incompatible.append(str(font_path))
+    detail = f"; incompatible fonts: {', '.join(incompatible)}" if incompatible else ""
+    raise RuntimeError(f"No ReportLab-compatible CJK TrueType font found; install fonts-wqy-zenhei{detail}")
 
 
 def _pdf_styles() -> tuple[str, dict[str, ParagraphStyle]]:
