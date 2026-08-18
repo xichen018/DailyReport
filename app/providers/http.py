@@ -74,6 +74,31 @@ class FreeMarketDataProvider:
             "source_url": url, "provider": "binance",
         }]
 
+    def _binance_30h(self) -> list[dict[str, Any]]:
+        url = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=31"
+        rows = json.loads(_get(url, self.timeout))
+        if len(rows) < 31:
+            raise ValueError("insufficient Binance hourly bars for 30h change")
+        return [{
+            "instrument_id": "bitcoin_binance", "symbol": "BTCUSDT", "kind": "rolling_30h",
+            "value": rows[-1][4], "previous_value": rows[0][4], "currency": "USDT",
+            "as_of": datetime.fromtimestamp(rows[-1][6] / 1000, timezone.utc).isoformat(),
+            "source_url": url, "provider": "binance",
+        }]
+
+    def _coingecko(self) -> list[dict[str, Any]]:
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true"
+        item = json.loads(_get(url, self.timeout))["bitcoin"]
+        value = float(item["usd"])
+        change_pct = float(item["usd_24h_change"])
+        previous = value / (1 + change_pct / 100)
+        return [{
+            "instrument_id": "bitcoin_binance", "symbol": "BTCUSDT", "kind": "crosscheck_24h",
+            "value": str(value), "previous_value": str(previous), "change_pct": str(change_pct), "currency": "USD",
+            "as_of": datetime.fromtimestamp(item["last_updated_at"], timezone.utc).isoformat(),
+            "source_url": url, "provider": "coingecko",
+        }]
+
     def _yahoo(self, instrument_id: str, symbol: str, currency: str) -> list[dict[str, Any]]:
         remote = YAHOO_SYMBOLS.get(symbol, symbol)
         encoded = urllib.parse.quote(remote, safe="")
@@ -131,6 +156,14 @@ class FreeMarketDataProvider:
                     records.extend(self._binance())
                 except Exception as exc:
                     errors.append(_error("binance", exc))
+                try:
+                    records.extend(self._binance_30h())
+                except Exception as exc:
+                    errors.append(_error("binance-30h", exc))
+                try:
+                    records.extend(self._coingecko())
+                except Exception as exc:
+                    errors.append(_error("coingecko", exc))
             try:
                 records.extend(self._yahoo(instrument.instrument_id, instrument.symbol, instrument.currency))
             except Exception as exc:
@@ -206,6 +239,21 @@ class FredMacroDataProvider:
     def __init__(self, timeout: float = 25.0) -> None:
         self.timeout = timeout
 
+    def _index_history(self, symbol: str) -> tuple[list[tuple[int, float]], str]:
+        encoded = urllib.parse.quote(symbol, safe="")
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range=1y&interval=1d&events=history"
+        result = json.loads(_get(url, self.timeout))["chart"]["result"][0]
+        closes = result["indicators"]["quote"][0]["close"]
+        values = [(ts, float(value)) for ts, value in zip(result["timestamp"], closes) if value is not None]
+        if len(values) < 2:
+            raise ValueError(f"insufficient index history for {symbol}")
+        return values, url
+
+    @staticmethod
+    def _nearest(values: list[tuple[int, float]], target: datetime) -> tuple[int, float]:
+        target_ts = int(target.timestamp())
+        return min(values, key=lambda item: abs(item[0] - target_ts))
+
     def get_task_data(self, module: ModuleConfig, start_at: datetime, end_at: datetime) -> dict[str, Any]:
         if module.task_id != "macro_market":
             return {"provider": self.name, "observations": [], "relative_metrics": [], "errors": []}
@@ -217,10 +265,52 @@ class FredMacroDataProvider:
             try:
                 rows = list(csv.DictReader(io.StringIO(_get(url, self.timeout).decode("utf-8"))))
                 current = next(row for row in reversed(rows) if row.get(series_id) not in {None, "", "."})
-                observations.append({"metric_id": series_id.lower(), "label": label, "value": current[series_id], "period": current["DATE"], "url": url, "provider": "fred"})
+                date_field = "observation_date" if "observation_date" in current else "DATE"
+                observations.append({"metric_id": series_id.lower(), "label": label, "value": current[series_id], "period": current[date_field], "url": url, "provider": "fred"})
             except Exception as exc:
                 errors.append(_error("fred", exc))
-        return {"provider": self.name, "observations": observations, "relative_metrics": [], "errors": errors}
+
+        relative_metrics: list[dict[str, Any]] = []
+        try:
+            histories = {}
+            urls = {}
+            for symbol in ("^IXIC", "^SOX", "^NDX"):
+                histories[symbol], urls[symbol] = self._index_history(symbol)
+            for symbol, metric_id, label in (
+                ("^IXIC", "nasdaq_daily_change", "纳斯达克综合指数日涨跌幅"),
+                ("^SOX", "sox_daily_change", "费城半导体指数日涨跌幅"),
+            ):
+                previous, current = histories[symbol][-2], histories[symbol][-1]
+                change_pct = (current[1] - previous[1]) / previous[1] * 100
+                observations.append({
+                    "metric_id": metric_id, "label": label, "value": str(round(change_pct, 4)), "unit": "%",
+                    "period": datetime.fromtimestamp(current[0], timezone.utc).date().isoformat(),
+                    "url": urls[symbol], "provider": "yahoo-chart",
+                })
+            labels = [
+                ("current", end_at),
+                ("one_month_ago", end_at - timedelta(days=30)),
+                ("three_months_ago", end_at - timedelta(days=90)),
+                ("year_start", datetime(end_at.year, 1, 1, tzinfo=end_at.tzinfo)),
+            ]
+            ratio_observations = []
+            for label, target in labels:
+                sox = self._nearest(histories["^SOX"], target)
+                ndx = self._nearest(histories["^NDX"], target)
+                ratio_observations.append({
+                    "label": label,
+                    "as_of": datetime.fromtimestamp(sox[0], timezone.utc).date().isoformat(),
+                    "numerator_value": str(sox[1]),
+                    "denominator_value": str(ndx[1]),
+                })
+            relative_metrics.append({
+                "metric_id": "sox_ndx_ratio", "numerator": "SOX", "denominator": "NDX",
+                "observations": ratio_observations,
+                "url": urls["^SOX"], "secondary_url": urls["^NDX"], "provider": "yahoo-chart",
+            })
+        except Exception as exc:
+            errors.append(_error("yahoo-index-history", exc))
+        return {"provider": self.name, "observations": observations, "relative_metrics": relative_metrics, "errors": errors}
 
 
 def build_free_provider_bundle(marketaux_token: str | None, timeout: float = 25.0) -> ProviderBundle:
