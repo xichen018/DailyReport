@@ -14,16 +14,32 @@ def _gateway_compatible_strict_schema() -> dict[str, Any]:
 
     schema = deepcopy(to_strict_json_schema(ResearchTaskResult))
 
-    def strip_formats(value: Any) -> None:
+    unsupported = {
+        "format",
+        "pattern",
+        "minLength",
+        "maxLength",
+        "minItems",
+        "maxItems",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        "default",
+    }
+
+    def strip_unsupported_keywords(value: Any) -> None:
         if isinstance(value, dict):
-            value.pop("format", None)
+            for keyword in unsupported:
+                value.pop(keyword, None)
             for child in value.values():
-                strip_formats(child)
+                strip_unsupported_keywords(child)
         elif isinstance(value, list):
             for child in value:
-                strip_formats(child)
+                strip_unsupported_keywords(child)
 
-    strip_formats(schema)
+    strip_unsupported_keywords(schema)
     return schema
 
 

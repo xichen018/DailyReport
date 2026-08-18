@@ -22,7 +22,8 @@ class RealIntegrationContractTests(unittest.TestCase):
     def test_gateway_schema_is_strict_without_unsupported_formats(self) -> None:
         schema = _gateway_compatible_strict_schema()
         serialized = json.dumps(schema)
-        self.assertNotIn('"format"', serialized)
+        for keyword in ("format", "pattern", "minLength", "maxLength", "minItems", "exclusiveMinimum", "default"):
+            self.assertNotIn(f'"{keyword}"', serialized)
         self.assertFalse(schema["additionalProperties"])
         self.assertEqual(set(schema["required"]), set(schema["properties"]))
 
