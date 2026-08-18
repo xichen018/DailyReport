@@ -137,7 +137,19 @@ def validate_result(
                 expected_value = (price.value - price.previous_value).quantize(Decimal("0.01"))
                 expected_pct = ((price.value - price.previous_value) / price.previous_value * Decimal("100")).quantize(Decimal("0.01"))
                 if price.change_value != expected_value or price.change_pct != expected_pct:
-                    raise ValidationFailure(f"price change mismatch: {instrument.symbol}")
+                    value_close = price.change_value is not None and abs(price.change_value - expected_value) <= Decimal("0.01")
+                    pct_close = price.change_pct is not None and abs(price.change_pct - expected_pct) <= Decimal("0.01")
+                    if not (value_close and pct_close):
+                        raise ValidationFailure(f"price change mismatch: {instrument.symbol}")
+                    price.change_value = expected_value
+                    price.change_pct = expected_pct
+                    warnings.append(
+                        TaskWarning(
+                            code="PRICE_CHANGE_RECALCULATED",
+                            message_zh=f"已按价格重算并规范化涨跌值与涨跌幅：{instrument.symbol} {price.kind}",
+                            field_path=f"instruments.{instrument.instrument_id}.prices.{price.kind}",
+                        )
+                    )
             if provider_data is not None:
                 candidates = market_candidates.get(instrument.instrument_id, [])
                 matched = any(

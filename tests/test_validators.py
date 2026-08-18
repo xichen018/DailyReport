@@ -47,6 +47,14 @@ class ValidatorTests(unittest.TestCase):
         with self.assertRaises(ValidationFailure):
             validate_result(broken, self.module)
 
+    def test_small_rounding_difference_is_normalized(self) -> None:
+        result = ResearchTaskResult.model_validate(self.raw)
+        price = result.instruments[0].prices[0]
+        price.change_value += Decimal("0.004")
+        price.change_pct += Decimal("0.004")
+        validated = validate_result(result, self.module)
+        self.assertTrue(any(item.code == "PRICE_CHANGE_RECALCULATED" for item in validated.warnings))
+
     def test_news_outside_window_is_rejected(self) -> None:
         broken = ResearchTaskResult.model_validate(self.raw)
         broken.instruments[0].news[0].published_at = self.context.window.end_at + timedelta(hours=1)
