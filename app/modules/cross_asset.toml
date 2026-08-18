@@ -1,0 +1,32 @@
+task_id = "cross_asset"
+title_zh = "加密资产与能源"
+template = "cross_asset.md"
+price_checks = ["BTCUSDT 当前最新价", "BTCUSDT 过去24小时涨跌幅", "BTCUSDT 过去30小时涨跌幅", "WTI最近交易日官方结算价与涨跌幅"]
+news_categories = ["监管与政策动态", "机构交易或资金流向", "供需变化", "宏观因素", "市场结构异动", "大幅波动直接原因"]
+industry_topics = ["BTC现货ETF资金流向", "SEC与加密立法", "链上活动", "衍生品市场", "OPEC+动态", "俄乌与中东地缘政治", "EIA/API库存", "IEA/EIA/OPEC需求预测", "美元走势"]
+triggered_checks = ["出现大幅价格波动时查明直接原因"]
+source_requirements = ["BTC 权威报价使用 Binance BTC/USDT，并用 CoinGecko 等交叉核验", "WTI 使用 NYMEX CL 近月合约官方结算，MCL 仅作微型合约映射", "WebSearch 中英文检索", "Marketaux 对 BTC/原油为可选补充", "Yahoo Finance 不得为唯一行情来源", "每条事实记录媒体名或机构名及 URL"]
+search_terms_zh = ["比特币 ETF 资金流 监管 链上 衍生品", "WTI 原油 OPEC 库存 地缘政治 美元"]
+search_terms_en = ["bitcoin price ETF flows SEC legislation institutional on-chain derivatives", "WTI oil OPEC EIA API inventory geopolitics demand forecast dollar"]
+no_news_policy = "逐个标的完成全部专属主题检查；窗口内确无重要新闻时明确写无重大新闻"
+background_policy = "只补充窗口外但仍在发酵的近期重要背景；标注原始日期并设置 outside_window=true"
+
+[[instruments]]
+instrument_id = "bitcoin_binance"
+symbol = "BTCUSDT"
+name = "Bitcoin / Tether"
+asset_class = "crypto"
+exchange = "BINANCE"
+currency = "USDT"
+aliases = ["BTC/USDT", "Bitcoin"]
+focus = ["ETF资金流向", "SEC与立法", "机构买入或抛售", "宏观流动性", "链上异动", "衍生品市场异动", "大幅波动直接原因"]
+
+[[instruments]]
+instrument_id = "wti_front_month"
+symbol = "CL1"
+name = "NYMEX WTI Front Month"
+asset_class = "future"
+exchange = "NYMEX"
+currency = "USD"
+aliases = ["CL", "MCL", "MCL1!"]
+focus = ["OPEC+", "俄乌与中东地缘政治", "EIA/API库存与预期", "IEA/EIA/OPEC需求预测", "美元走势影响"]

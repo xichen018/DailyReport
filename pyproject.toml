@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "daily-financial-report"
+version = "0.1.0"
+description = "Isolated, schema-validated financial daily report pipeline"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.10,<3",
+  "reportlab>=4.2,<5",
+  "openai>=2.21,<3",
+  "boto3>=1.35,<2",
+]
+
+[project.scripts]
+daily-report = "app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

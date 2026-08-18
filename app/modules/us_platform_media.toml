@@ -1,0 +1,32 @@
+task_id = "us_platform_media"
+title_zh = "美股平台与媒体"
+template = "equities.md"
+price_checks = ["最近美国交易日收盘价与涨跌幅", "上一美国交易日收盘价", "盘前或盘后价格与涨跌幅"]
+news_categories = ["财报/业绩指引", "分析师评级或目标价变动", "产品与技术发布", "大额订单/合作", "管理层变动", "监管法律动态", "相关行业新闻"]
+industry_topics = ["生成式AI与搜索", "云计算与AI基础设施", "加密资产", "社交媒体与政治事件"]
+triggered_checks = ["盘前或盘后涨跌幅绝对值超过1%时查明并报告原因", "GOOG 当日明显下跌时务必查明具体原因"]
+source_requirements = ["Marketaux 对 GOOG 和 DJT 均为必查", "WebSearch 中英文检索", "Yahoo Finance 与 Google Finance 等交叉核验且 Yahoo 不得为唯一行情来源", "每条事实记录媒体名或机构名及 URL"]
+search_terms_zh = ["Alphabet 谷歌 股价 下跌 原因", "Gemini AI搜索 云 TPU 反垄断", "Trump Media DJT 比特币 Truth Social 解禁 增发"]
+search_terms_en = ["Alphabet GOOG stock drop why", "Gemini AI Search Cloud TPU antitrust", "Trump Media DJT bitcoin Truth Social lockup share issuance"]
+no_news_policy = "逐只股票完成全部分类和专属关注点检查；窗口内确无重要新闻时明确写无重大新闻"
+background_policy = "只补充窗口外但仍在发酵的近期重要背景；标注原始日期并设置 outside_window=true"
+
+[[instruments]]
+instrument_id = "alphabet_c"
+symbol = "GOOG"
+name = "Alphabet Class C"
+asset_class = "equity"
+exchange = "NASDAQ"
+currency = "USD"
+aliases = ["Alphabet", "Google"]
+focus = ["Gemini", "AI搜索", "Google Cloud", "TPU", "反垄断案件进展"]
+
+[[instruments]]
+instrument_id = "trump_media"
+symbol = "DJT"
+name = "Trump Media & Technology Group"
+asset_class = "equity"
+exchange = "NASDAQ"
+currency = "USD"
+aliases = ["Trump Media", "Truth Social"]
+focus = ["比特币储备与加密资产持仓", "Truth Social动态", "政治相关消息", "股份解禁", "增发"]

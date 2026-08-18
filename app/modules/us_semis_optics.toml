@@ -1,0 +1,32 @@
+task_id = "us_semis_optics"
+title_zh = "美股半导体与光通信"
+template = "equities.md"
+price_checks = ["最近美国交易日收盘价与涨跌幅", "上一美国交易日收盘价", "盘前或盘后价格与涨跌幅"]
+news_categories = ["财报/业绩指引", "分析师评级或目标价变动", "产品与技术发布", "大额订单/合作", "管理层变动", "监管法律动态"]
+industry_topics = ["存储周期", "HBM供需", "DRAM/NAND定价", "光模块", "数据中心光互连", "AI资本开支", "数据中心建设"]
+triggered_checks = ["盘前或盘后涨跌幅绝对值超过1%时查明并报告原因"]
+source_requirements = ["Marketaux 对 MU 和 COHR 均为必查", "WebSearch 中英文检索", "Yahoo Finance 与 Google Finance 等交叉核验且 Yahoo 不得为唯一行情来源", "每条事实记录媒体名或机构名及 URL"]
+search_terms_zh = ["美光科技 HBM 存储价格", "Coherent 光模块 数据中心光互连", "AI资本开支 数据中心"]
+search_terms_en = ["Micron MU stock news", "Coherent COHR news", "HBM memory DRAM NAND prices", "optical modules datacenter interconnect AI capex"]
+no_news_policy = "逐只股票完成全部分类和行业专题检查；窗口内确无重要新闻时明确写无重大新闻"
+background_policy = "只补充窗口外但仍在发酵的近期重要背景；标注原始日期并设置 outside_window=true"
+
+[[instruments]]
+instrument_id = "micron"
+symbol = "MU"
+name = "Micron Technology"
+asset_class = "equity"
+exchange = "NASDAQ"
+currency = "USD"
+aliases = ["Micron", "美光科技"]
+focus = ["HBM", "DRAM/NAND定价", "存储周期", "HBM供需", "AI资本开支"]
+
+[[instruments]]
+instrument_id = "coherent"
+symbol = "COHR"
+name = "Coherent Corp."
+asset_class = "equity"
+exchange = "NYSE"
+currency = "USD"
+aliases = ["Coherent", "相干公司"]
+focus = ["光模块", "激光器", "数据中心光互连", "AI资本开支", "数据中心建设"]

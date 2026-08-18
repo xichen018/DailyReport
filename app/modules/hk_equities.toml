@@ -1,0 +1,32 @@
+task_id = "hk_equities"
+title_zh = "港股"
+template = "equities.md"
+price_checks = ["最近香港交易日收盘价", "最近香港交易日涨跌幅", "若目标日非交易日则说明并使用最近交易日"]
+news_categories = ["财报/业绩指引", "分析师评级或目标价变动", "产品与技术发布", "大额订单/合作", "管理层变动", "监管法律动态"]
+industry_topics = ["锂价", "锂电产业链", "光模块", "AI算力需求"]
+triggered_checks = []
+source_requirements = ["Marketaux 必查（1772.HK、6166.HK，可补查002460.SZ）", "WebSearch 中英文检索", "Yahoo Finance、Google Finance、Investing.com 至少交叉核验且 Yahoo 不得为唯一行情来源", "每条事实记录媒体名或机构名及 URL"]
+search_terms_zh = ["赣锋锂业", "剑桥科技 光模块", "锂价 锂电产业链", "AI算力 光模块"]
+search_terms_en = ["Ganfeng Lithium", "CIG Shanghai 6166", "lithium battery supply chain", "optical module AI compute demand"]
+no_news_policy = "逐只股票完成全部新闻分类与行业专题检查；窗口内确无重要新闻时明确写无重大新闻"
+background_policy = "可简要补充窗口外但近几天仍在发酵的重要背景；必须标注原始日期并设置 outside_window=true"
+
+[[instruments]]
+instrument_id = "ganfeng_h"
+symbol = "1772.HK"
+name = "赣锋锂业 H股"
+asset_class = "equity"
+exchange = "HKEX"
+currency = "HKD"
+aliases = ["002460.SZ", "Ganfeng Lithium"]
+focus = ["锂价", "锂电产业链"]
+
+[[instruments]]
+instrument_id = "cig_shanghai_h"
+symbol = "6166.HK"
+name = "CIG Shanghai / 剑桥科技 H股"
+asset_class = "equity"
+exchange = "HKEX"
+currency = "HKD"
+aliases = ["603083.SS", "Cambridge Industries Group"]
+focus = ["光模块", "电信设备", "AI算力需求"]

@@ -1,0 +1,185 @@
+from __future__ import annotations
+
+import re
+from decimal import Decimal
+from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+from app.modules.loader import ModuleConfig
+from app.schemas.models import ResearchTaskResult, TaskStatus, TaskWarning
+
+
+class ValidationFailure(ValueError):
+    pass
+
+
+TRACKING_PARAMS = {"fbclid", "gclid", "mc_cid", "mc_eid"}
+
+
+def required_research_checks(module: ModuleConfig) -> set[tuple[str, str, str]]:
+    required = {("price", module.task_id, item) for item in module.price_checks}
+    news_scopes = [item.instrument_id for item in module.instruments] or [module.task_id]
+    required.update(("news", scope, item) for scope in news_scopes for item in module.news_categories)
+    required.update(("industry", module.task_id, item) for item in module.industry_topics)
+    required.update(("trigger", module.task_id, item) for item in module.triggered_checks)
+    required.update(
+        ("instrument_focus", instrument.instrument_id, item)
+        for instrument in module.instruments
+        for item in instrument.focus
+    )
+    return required
+
+
+def canonical_url(value: str) -> str:
+    parts = urlsplit(value)
+    query = [
+        (key, val)
+        for key, val in parse_qsl(parts.query, keep_blank_values=True)
+        if not key.lower().startswith("utm_") and key.lower() not in TRACKING_PARAMS
+    ]
+    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), urlencode(sorted(query)), ""))
+
+
+def normalized_headline(value: str) -> str:
+    return re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", value.casefold())
+
+
+def validate_result(
+    result: ResearchTaskResult,
+    module: ModuleConfig,
+    provider_data: dict[str, Any] | None = None,
+) -> ResearchTaskResult:
+    if result.task_id != module.task_id:
+        raise ValidationFailure("task_id does not match module")
+    if result.status == TaskStatus.FAILED:
+        return result
+
+    registry = {item.instrument_id: item for item in module.instruments}
+    source_ids = {source.source_id for source in result.sources}
+    if len(source_ids) != len(result.sources):
+        raise ValidationFailure("duplicate source_id")
+
+    actual_checks = {
+        (item.requirement_type, item.scope_id, item.requirement_zh)
+        for item in result.research_checks
+    }
+    required_checks = required_research_checks(module)
+    missing_checks = required_checks - actual_checks
+    if missing_checks:
+        raise ValidationFailure(f"required research checks missing: {sorted(missing_checks)}")
+    if len(actual_checks) != len(result.research_checks):
+        raise ValidationFailure("duplicate research check")
+    for check in result.research_checks:
+        if set(check.source_ids) - source_ids:
+            raise ValidationFailure(f"research check has unknown source: {check.check_id}")
+
+    warnings = list(result.warnings)
+    market_candidates: dict[str, list[dict[str, Any]]] = {}
+    news_urls: set[str] = set()
+    macro_metric_ids: set[str] = set()
+    relative_metric_ids: set[str] = set()
+    if provider_data is not None:
+        for record in provider_data.get("market", {}).get("records", []):
+            market_candidates.setdefault(record["instrument_id"], []).append(record)
+        news_urls = {
+            canonical_url(str(item["url"]))
+            for item in provider_data.get("news", {}).get("articles", [])
+            if item.get("url")
+        }
+        macro_metric_ids = {
+            str(item["metric_id"])
+            for item in provider_data.get("macro", {}).get("observations", [])
+            if item.get("metric_id")
+        }
+        relative_metric_ids = {
+            str(item["metric_id"])
+            for item in provider_data.get("macro", {}).get("relative_metrics", [])
+            if item.get("metric_id")
+        }
+    for instrument in result.instruments:
+        configured = registry.get(instrument.instrument_id)
+        if configured is None:
+            raise ValidationFailure(f"unknown instrument_id: {instrument.instrument_id}")
+        expected = (configured.symbol, configured.exchange, configured.currency)
+        actual = (instrument.symbol, instrument.exchange, instrument.currency)
+        if actual != expected:
+            raise ValidationFailure(f"instrument identity mismatch: {instrument.instrument_id}")
+        for price in instrument.prices:
+            missing = set(price.source_ids) - source_ids
+            if missing:
+                raise ValidationFailure(f"price has unknown source ids: {sorted(missing)}")
+            if price.previous_value is not None:
+                expected_value = (price.value - price.previous_value).quantize(Decimal("0.01"))
+                expected_pct = ((price.value - price.previous_value) / price.previous_value * Decimal("100")).quantize(Decimal("0.01"))
+                if price.change_value != expected_value or price.change_pct != expected_pct:
+                    raise ValidationFailure(f"price change mismatch: {instrument.symbol}")
+            if provider_data is not None:
+                candidates = market_candidates.get(instrument.instrument_id, [])
+                matched = any(
+                    abs(price.value - Decimal(str(item["value"]))) <= Decimal("0.01")
+                    and (
+                        price.previous_value is None
+                        or item.get("previous_value") is None
+                        or abs(price.previous_value - Decimal(str(item["previous_value"]))) <= Decimal("0.01")
+                    )
+                    for item in candidates
+                )
+                if not matched:
+                    raise ValidationFailure(f"price not found in provider data: {instrument.symbol}")
+
+        deduped = []
+        seen: set[tuple[str, str]] = set()
+        source_map = {source.source_id: source for source in result.sources}
+        for news in sorted(instrument.news, key=lambda item: item.published_at, reverse=True):
+            missing = set(news.source_ids) - source_ids
+            if missing:
+                raise ValidationFailure(f"news has unknown source ids: {sorted(missing)}")
+            if not news.outside_window and not (result.window.start_at <= news.published_at <= result.window.end_at):
+                raise ValidationFailure(f"news outside research window: {news.headline}")
+            urls = sorted(canonical_url(str(source_map[sid].url)) for sid in news.source_ids)
+            if provider_data is not None and not any(url in news_urls for url in urls):
+                raise ValidationFailure(f"news URL not found in provider data: {news.headline}")
+            key = (normalized_headline(news.headline), "|".join(urls))
+            if key in seen:
+                warnings.append(
+                    TaskWarning(
+                        code="DUPLICATE_NEWS_REMOVED",
+                        message_zh=f"已移除重复新闻：{news.headline}",
+                        field_path=f"instruments.{instrument.instrument_id}.news",
+                    )
+                )
+                continue
+            seen.add(key)
+            deduped.append(news)
+        instrument.news = deduped
+
+    for observation in result.macro_observations:
+        if set(observation.source_ids) - source_ids:
+            raise ValidationFailure(f"macro observation has unknown source: {observation.metric_id}")
+        if provider_data is not None and observation.metric_id not in macro_metric_ids:
+            raise ValidationFailure(f"macro observation not found in provider data: {observation.metric_id}")
+    for metric in result.relative_metrics:
+        if set(metric.source_ids) - source_ids:
+            raise ValidationFailure(f"relative metric has unknown source: {metric.metric_id}")
+        if provider_data is not None and metric.metric_id not in relative_metric_ids:
+            raise ValidationFailure(f"relative metric not found in provider data: {metric.metric_id}")
+        for observation in metric.observations:
+            expected_ratio = (observation.numerator_value / observation.denominator_value).quantize(Decimal("0.0001"))
+            if observation.ratio != expected_ratio:
+                raise ValidationFailure(f"relative ratio mismatch: {metric.metric_id}")
+
+    referenced_source_ids: set[str] = set()
+    for instrument in result.instruments:
+        for price in instrument.prices:
+            referenced_source_ids.update(price.source_ids)
+        for news in instrument.news:
+            referenced_source_ids.update(news.source_ids)
+    for observation in result.macro_observations:
+        referenced_source_ids.update(observation.source_ids)
+    for metric in result.relative_metrics:
+        referenced_source_ids.update(metric.source_ids)
+    for check in result.research_checks:
+        referenced_source_ids.update(check.source_ids)
+    result.sources = [source for source in result.sources if source.source_id in referenced_source_ids]
+    result.warnings = warnings
+    return result
