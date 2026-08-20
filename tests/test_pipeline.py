@@ -53,6 +53,8 @@ class PipelineTests(unittest.TestCase):
             self.assertIn("Mock Exchange", html_report)
             self.assertIn("查看原文</a>", html_report)
             self.assertIn("class='instrument'", html_report)
+            self.assertIn("class='instrument-index'>1.1</span>", html_report)
+            self.assertIn("class='news-index'>1.1.1</span>", html_report)
             self.assertIn("来源：<a href=", html_report)
             self.assertNotIn("[src_1]", html_report)
             self.assertNotIn("utm_source=duplicate", html_report)

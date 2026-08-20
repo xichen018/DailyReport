@@ -82,6 +82,44 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual(record["value"], "39.000")
         self.assertEqual(record["previous_value"], "40.080")
 
+    def test_yahoo_includes_previous_trading_timestamp(self) -> None:
+        payload = json.dumps(
+            {
+                "chart": {
+                    "result": [{
+                        "timestamp": [1787101200, 1787187600],
+                        "indicators": {"quote": [{"close": [100.0, 102.0]}]},
+                    }]
+                }
+            }
+        ).encode()
+        with patch("app.providers.http._get", return_value=payload):
+            record = FreeMarketDataProvider()._yahoo("alphabet_c", "GOOG", "USD")[0]
+        self.assertEqual(record["previous_value"], "100.0")
+        self.assertNotEqual(record["previous_as_of"], record["as_of"])
+
+    def test_google_news_uses_separate_chinese_and_english_locales(self) -> None:
+        module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "cybersecurity")
+        requested_urls: list[str] = []
+
+        def fake_get(url: str, _: float) -> bytes:
+            requested_urls.append(url)
+            if "gdeltproject.org" in url:
+                return b'{"articles": []}'
+            return b"<rss><channel></channel></rss>"
+
+        with patch("app.providers.http._get", side_effect=fake_get):
+            result = FreeNewsProvider(None).get_task_data(
+                module,
+                datetime(2026, 8, 17, tzinfo=ZoneInfo("Asia/Hong_Kong")),
+                datetime(2026, 8, 18, tzinfo=ZoneInfo("Asia/Hong_Kong")),
+            )
+
+        google_queries = [item for item in result["queries"] if item["provider"] == "google-news-rss"]
+        self.assertEqual({item["language"] for item in google_queries}, {"zh", "en"})
+        self.assertTrue(any("hl=en-US" in url and "ceid=US%3Aen" in url for url in requested_urls))
+        self.assertTrue(any("hl=zh-CN" in url and "ceid=HK%3Azh-Hans" in url for url in requested_urls))
+
     def test_marketaux_token_is_not_returned_in_provider_bundle(self) -> None:
         module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "cybersecurity")
         payloads = [json.dumps({"data": []}).encode(), b"<rss><channel></channel></rss>", b"<rss><channel></channel></rss>", b"<rss><channel></channel></rss>"]

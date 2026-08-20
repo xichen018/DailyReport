@@ -103,6 +103,22 @@ class ValidatorTests(unittest.TestCase):
         self.assertEqual(validated.instruments[0].prices[0].kind, "previous_close")
         self.assertEqual(validated.instruments[0].prices[0].value, Decimal(str(provider_record["previous_value"])))
 
+    def test_missing_previous_close_is_added_from_yahoo_provider(self) -> None:
+        result = ResearchTaskResult.model_validate(self.raw)
+        result.instruments[0].prices = result.instruments[0].prices[:1]
+        provider_record = self.provider_data["market"]["records"][0]
+        provider_record["provider"] = "yahoo-chart"
+        provider_record["previous_as_of"] = "2026-08-17T08:00:00+00:00"
+        source = next(item for item in result.sources if item.source_id in result.instruments[0].prices[0].source_ids)
+        provider_record["source_url"] = str(source.url)
+
+        validated = validate_result(result, self.module, self.provider_data)
+
+        previous = next(price for price in validated.instruments[0].prices if price.kind == "previous_close")
+        self.assertEqual(previous.value, Decimal(str(provider_record["previous_value"])))
+        self.assertEqual(previous.as_of.isoformat(), "2026-08-17T08:00:00+00:00")
+        self.assertTrue(any(item.code == "PREVIOUS_CLOSE_ADDED_FROM_PROVIDER" for item in validated.warnings))
+
     def test_provider_precision_is_restored_before_change_recalculation(self) -> None:
         result = ResearchTaskResult.model_validate(self.raw)
         price = result.instruments[0].prices[0]

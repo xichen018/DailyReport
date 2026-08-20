@@ -116,7 +116,9 @@ class FreeMarketDataProvider:
         return [{
             "instrument_id": instrument_id, "symbol": symbol, "kind": "close",
             "value": str(current[1]), "previous_value": str(previous[1]), "currency": currency,
-            "as_of": datetime.fromtimestamp(current[0], timezone.utc).isoformat(), "source_url": url, "provider": "yahoo-chart",
+            "as_of": datetime.fromtimestamp(current[0], timezone.utc).isoformat(),
+            "previous_as_of": datetime.fromtimestamp(previous[0], timezone.utc).isoformat(),
+            "source_url": url, "provider": "yahoo-chart",
         }]
 
     def _stooq(self, instrument_id: str, symbol: str, currency: str) -> list[dict[str, Any]]:
@@ -254,23 +256,31 @@ class FreeNewsProvider:
                 optional_errors.append(_error("gdelt", exc))
                 queries.append({"provider": "gdelt", "scope": module.task_id, "status": "failed", "returned": 0})
 
-        search_queries = list(module.search_terms_zh) + list(module.search_terms_en)
-        for query_text in search_queries:
+        search_queries = [
+            *((query_text, "zh") for query_text in module.search_terms_zh),
+            *((query_text, "en") for query_text in module.search_terms_en),
+        ]
+        for query_text, language in search_queries:
             windowed_query = f"({query_text}) when:2d"
-            url = "https://news.google.com/rss/search?" + urllib.parse.urlencode({"q": windowed_query, "hl": "zh-CN", "gl": "HK", "ceid": "HK:zh-Hans"})
+            locale = (
+                {"hl": "en-US", "gl": "US", "ceid": "US:en"}
+                if language == "en"
+                else {"hl": "zh-CN", "gl": "HK", "ceid": "HK:zh-Hans"}
+            )
+            url = "https://news.google.com/rss/search?" + urllib.parse.urlencode({"q": windowed_query, **locale})
             try:
                 root = ET.fromstring(_get(url, self.timeout))
-                returned = root.findall("./channel/item")[:10]
-                queries.append({"provider": "google-news-rss", "query": query_text, "status": "success", "returned": len(returned)})
+                returned = root.findall("./channel/item")[:15]
+                queries.append({"provider": "google-news-rss", "query": query_text, "language": language, "status": "success", "returned": len(returned)})
                 for item in returned:
                     articles.append({
                         "instrument_id": None, "headline": item.findtext("title"), "description": item.findtext("description"),
                         "published_at": _iso_published_at(item.findtext("pubDate")), "publisher": item.findtext("source") or "Google News",
-                        "url": item.findtext("link"), "provider": "google-news-rss", "query": query_text,
+                        "url": item.findtext("link"), "provider": "google-news-rss", "query": query_text, "language": language,
                     })
             except Exception as exc:
                 errors.append(_error("google-news-rss", exc))
-                queries.append({"provider": "google-news-rss", "query": query_text, "status": "failed", "returned": 0})
+                queries.append({"provider": "google-news-rss", "query": query_text, "language": language, "status": "failed", "returned": 0})
         window_articles = []
         for article in articles:
             published_at = article.get("published_at")

@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from pydantic import HttpUrl
 
 from app.modules.loader import ModuleConfig
-from app.schemas.models import CheckStatus, ResearchTaskResult, TaskStatus, TaskWarning
+from app.schemas.models import CheckStatus, PricePoint, ResearchTaskResult, TaskStatus, TaskWarning
 from app.text.chinese import to_simplified_chinese
 
 
@@ -298,6 +298,50 @@ def validate_result(
                             code="PRICE_CHANGE_RECALCULATED",
                             message_zh=f"已按价格重算并规范化涨跌值与涨跌幅：{instrument.symbol} {price.kind}",
                             field_path=f"instruments.{instrument.instrument_id}.prices.{price.kind}",
+                        )
+                    )
+        has_previous_close = any(_is_previous_close(price.kind) for price in instrument.prices)
+        if provider_data is not None and not has_previous_close:
+            yahoo_candidates = [
+                item
+                for item in market_candidates.get(instrument.instrument_id, [])
+                if item.get("provider") == "yahoo-chart" and item.get("previous_value") is not None
+            ]
+            if len(yahoo_candidates) == 1:
+                candidate = yahoo_candidates[0]
+                candidate_url = canonical_url(str(candidate.get("source_url", "")))
+                source_ids_for_previous = [
+                    source.source_id
+                    for source in result.sources
+                    if canonical_url(str(source.url)) == candidate_url
+                ]
+                if not source_ids_for_previous:
+                    yahoo_price = next(
+                        (
+                            price
+                            for price in instrument.prices
+                            if price.source_ids
+                            and abs(price.value - Decimal(str(candidate["value"]))) <= Decimal("0.01")
+                        ),
+                        None,
+                    )
+                    if yahoo_price is not None:
+                        source_ids_for_previous = list(yahoo_price.source_ids)
+                if source_ids_for_previous:
+                    instrument.prices.append(
+                        PricePoint(
+                            kind="previous_close",
+                            value=Decimal(str(candidate["previous_value"])),
+                            currency=str(candidate["currency"]),
+                            as_of=candidate.get("previous_as_of") or candidate["as_of"],
+                            source_ids=source_ids_for_previous,
+                        )
+                    )
+                    warnings.append(
+                        TaskWarning(
+                            code="PREVIOUS_CLOSE_ADDED_FROM_PROVIDER",
+                            message_zh=f"已从 Yahoo 连续交易日数据补全上一收盘价：{instrument.symbol}",
+                            field_path=f"instruments.{instrument.instrument_id}.prices.previous_close",
                         )
                     )
         instrument.news = validated_news(instrument.news, f"instruments.{instrument.instrument_id}.news")

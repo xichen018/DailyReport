@@ -1,1 +1,1 @@
-逐项执行配置中的 price_checks、news_categories、industry_topics、triggered_checks 及每个标的的 focus。研究 BTCUSDT 最新价及滚动 24/30 小时表现，并核对 WTI 近月合约最近官方结算。逐条总结全部窗口内候选新闻，重点主题优先；新闻影响必须明确相对于对应标的价格。检索成功但没有新闻时使用 no_material_finding，不得称为数据缺失。
+逐项执行配置中的 price_checks、news_categories、industry_topics、triggered_checks 及每个标的的 focus。研究 BTCUSDT 最新价及滚动 24/30 小时表现，并核对 WTI 近月合约最近官方结算。逐条深入分析全部中英文窗口内候选新闻，重点主题优先；新闻影响必须明确相对于对应标的价格，并说明供需、资金流、宏观流动性或风险溢价的传导路径。不得为了简短而省略关键投资逻辑。检索成功但没有新闻时使用 no_material_finding，不得称为数据缺失。

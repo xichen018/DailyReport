@@ -24,6 +24,15 @@ STATUS_ZH = {
     TaskStatus.FAILED: "失败",
 }
 IMPACT_ZH = {"positive": "利好", "negative": "利空", "neutral": "中性"}
+ASSET_CLASS_ZH = {"equity": "股票", "crypto": "加密资产", "future": "期货", "index": "指数"}
+PRICE_KIND_ZH = {
+    "close": "最新收盘",
+    "previous_close": "上一交易日收盘",
+    "latest_24h": "最新价 / 24小时",
+    "rolling_30h": "30小时滚动",
+    "crosscheck_24h": "24小时交叉核验",
+    "yahoo_reference_close_non_official": "Yahoo 近月参考收盘（非官方结算）",
+}
 
 
 def _format_number(value: object, places: int = 2) -> str:
@@ -98,6 +107,16 @@ def _format_percent(value: object) -> str:
     return "-" if value is None else f"{_format_number(value)}%"
 
 
+def _price_kind_label(kind: str) -> str:
+    if kind in PRICE_KIND_ZH:
+        return PRICE_KIND_ZH[kind]
+    if "上一" in kind and "收盘" in kind:
+        return PRICE_KIND_ZH["previous_close"]
+    if "收盘" in kind:
+        return PRICE_KIND_ZH["close"]
+    return kind
+
+
 def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mode: str) -> str:
     result_list = list(results)
     delivered = sum(item.status != TaskStatus.FAILED for item in result_list)
@@ -151,17 +170,19 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
                 "<table class='data-table'><thead><tr><th>范围</th><th>必查项</th><th>状态</th><th>结论</th></tr></thead>"
                 f"<tbody>{rows}</tbody></table></details>"
             )
-        for instrument in result.instruments:
+        for instrument_number, instrument in enumerate(result.instruments, start=1):
             body.append(
                 "<div class='instrument'>"
-                f"<div class='instrument-head'><div><h3>{html.escape(instrument.name)}</h3>"
+                f"<div class='instrument-head'><div><span class='instrument-index'>{section_number}.{instrument_number}</span>"
+                f"<h3>{html.escape(instrument.name)}</h3>"
                 f"<strong>{html.escape(instrument.symbol)}</strong></div>"
-                f"<span>{html.escape(instrument.exchange)} · {html.escape(instrument.currency)}</span></div>"
+                f"<span>{ASSET_CLASS_ZH.get(instrument.asset_class, instrument.asset_class)} · "
+                f"{html.escape(instrument.exchange)} · {html.escape(instrument.currency)}</span></div>"
             )
             if instrument.prices:
                 rows = "".join(
                     "<tr>"
-                    f"<td>{html.escape(price.kind)}</td><td class='numeric'>{_format_number(price.value)} {html.escape(price.currency)}</td>"
+                    f"<td>{html.escape(_price_kind_label(price.kind))}</td><td class='numeric'>{_format_number(price.value)} {html.escape(price.currency)}</td>"
                     f"<td class='numeric {_change_class(price.change_value)}'>{_format_number(price.change_value)}</td>"
                     f"<td class='numeric {_change_class(price.change_pct)}'>{_format_percent(price.change_pct)}</td>"
                     f"<td>{html.escape(price.as_of.strftime('%Y-%m-%d %H:%M'))}</td><td class='source-ref'>{html.escape(_source_refs(price.source_ids, source_labels))}</td></tr>"
@@ -170,10 +191,11 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
                 body.append("<table class='data-table'><thead><tr><th>口径</th><th>价格</th><th>涨跌</th><th>涨跌幅</th><th>截至</th><th>来源</th></tr></thead><tbody>" + rows + "</tbody></table>")
             if instrument.news:
                 body.append("<div class='news'>")
-                for item in instrument.news:
+                for news_number, item in enumerate(instrument.news, start=1):
                     source_links = _html_source_links(result, item.source_ids)
                     body.append(
-                        f"<article><div class='event-line'><span class='impact {html.escape(item.impact.value)}'>{IMPACT_ZH[item.impact.value]}</span>"
+                        f"<article><div class='event-line'><span class='news-index'>{section_number}.{instrument_number}.{news_number}</span>"
+                        f"<span class='impact {html.escape(item.impact.value)}'>{IMPACT_ZH[item.impact.value]}</span>"
                         f"<h4>{html.escape(item.headline)}</h4></div>"
                         f"<div class='news-meta'><time>{html.escape(item.published_at.strftime('%Y-%m-%d %H:%M %Z'))}</time>"
                         f"<span class='news-source'>来源：{source_links}</span></div>"
@@ -184,11 +206,16 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
                 body.append("<p class='no-news'>研究窗口内未发现达到披露阈值的重大新闻。</p>")
             body.append("</div>")
         if result.section_news:
-            body.append("<div class='instrument-head'><h3>板块与行业新闻</h3><span>全部窗口内候选</span></div><div class='news'>")
-            for item in result.section_news:
+            section_news_group = len(result.instruments) + 1
+            body.append(
+                f"<div class='instrument-head'><div><span class='instrument-index'>{section_number}.{section_news_group}</span>"
+                "<h3>板块与行业新闻</h3></div><span>全部窗口内候选</span></div><div class='news'>"
+            )
+            for news_number, item in enumerate(result.section_news, start=1):
                 source_links = _html_source_links(result, item.source_ids)
                 body.append(
-                    f"<article><div class='event-line'><span class='impact {html.escape(item.impact.value)}'>{IMPACT_ZH[item.impact.value]}</span>"
+                    f"<article><div class='event-line'><span class='news-index'>{section_number}.{section_news_group}.{news_number}</span>"
+                    f"<span class='impact {html.escape(item.impact.value)}'>{IMPACT_ZH[item.impact.value]}</span>"
                     f"<h4>{html.escape(item.headline)}</h4></div>"
                     f"<div class='news-meta'><time>{html.escape(item.published_at.strftime('%Y-%m-%d %H:%M %Z'))}</time>"
                     f"<span class='news-source'>来源：{source_links}</span></div>"
@@ -216,7 +243,7 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
                 )
             body.append("</ol></details>")
         sections.append(
-            f"<section><div class='section-head'><div><span class='section-no'>{section_number:02d}</span><h2>{html.escape(result.title_zh)}</h2></div>"
+            f"<section><div class='section-head'><div><span class='section-no'>{section_number}</span><h2>{html.escape(result.title_zh)}</h2></div>"
             f"<span class='status {status_class}'>{STATUS_ZH[result.status]}</span></div>{''.join(body)}</section>"
         )
 
@@ -236,10 +263,10 @@ main{{max-width:1040px;margin:24px auto;background:var(--paper);padding:46px 54p
 .brief{{padding:22px 0 26px;border-bottom:2px solid var(--ink)}} .brief h2{{font-size:15px;margin:0 0 14px;text-transform:uppercase}} .brief-grid{{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line)}} .brief-item{{padding:12px 14px;border-right:1px solid var(--line)}} .brief-item:last-child{{border:0}} .brief-item span{{display:block;font-size:11px;color:var(--muted)}} .brief-item strong{{display:block;font-size:20px;margin-top:4px}}
 .snapshot{{margin-top:20px}} .snapshot h3{{font-size:13px;margin:0 0 8px}} section{{padding:30px 0;border-bottom:1px solid var(--line)}}
 .section-head{{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}} .section-head>div{{display:flex;align-items:baseline;gap:12px}} .section-no{{font-size:12px;color:var(--accent);font-weight:700}} h2{{font-size:22px;margin:0}} .status{{font-size:11px;padding:2px 7px;border:1px solid var(--accent);color:var(--accent);font-weight:700}} .status.failed{{border-color:var(--down);color:var(--down)}}
-.instrument{{margin:22px 0 28px;border-top:2px solid var(--ink);padding-top:0}} .instrument-head{{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0;padding:11px 0 10px;border-bottom:1px solid var(--line)}} .instrument-head>div{{display:flex;align-items:baseline;gap:10px;min-width:0}} .instrument-head h3{{font-size:17px;margin:0}} .instrument-head strong{{font-size:13px;color:var(--accent)}} .instrument-head span{{font-size:11px;color:var(--muted);font-weight:700;white-space:nowrap}}
+.instrument{{margin:22px 0 28px;border-top:2px solid var(--ink);padding-top:0}} .instrument-head{{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0;padding:11px 0 10px;border-bottom:1px solid var(--line)}} .instrument-head>div{{display:flex;align-items:baseline;gap:10px;min-width:0}} .instrument-head h3{{font-size:17px;margin:0}} .instrument-head strong{{font-size:13px;color:var(--accent)}} .instrument-head span{{font-size:11px;color:var(--muted);font-weight:700;white-space:nowrap}} .instrument-head .instrument-index{{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:2px 5px;background:var(--ink);color:#fff;font-size:10px}}
 .coverage{{display:flex;justify-content:space-between;gap:12px;padding:9px 11px;background:var(--accent-soft);font-size:12px;margin-bottom:12px}}
 table{{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}} th,td{{padding:8px 9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;overflow-wrap:anywhere}} th{{background:var(--soft);font-size:10px;color:#475467;text-transform:uppercase}} td:first-child{{font-weight:500}} td span{{display:block;font-size:10px;color:var(--muted);font-weight:400;margin-top:2px}} .numeric{{text-align:right;white-space:nowrap}} .up{{color:var(--up);font-weight:700}} .down{{color:var(--down);font-weight:700}} .flat{{color:var(--muted)}} small{{font-size:9px;color:var(--muted)}}
-.data-table{{margin-bottom:13px}} .news{{border-top:0}} article{{padding:15px 0;border-bottom:1px solid var(--line)}} .event-line{{display:flex;align-items:flex-start;gap:9px}} h4{{font-size:14px;line-height:1.45;margin:0;flex:1}} .impact{{flex:0 0 auto;font-size:10px;font-weight:700;padding:2px 6px;border:1px solid;margin-top:1px}} .impact.positive{{color:var(--up)}} .impact.negative{{color:var(--down)}} .impact.neutral{{color:var(--muted)}}
+.data-table{{margin-bottom:13px}} .news{{border-top:0}} article{{padding:15px 0;border-bottom:1px solid var(--line)}} .event-line{{display:flex;align-items:flex-start;gap:9px}} h4{{font-size:14px;line-height:1.45;margin:0;flex:1}} .news-index{{flex:0 0 auto;color:var(--muted);font-size:10px;font-weight:700;padding-top:3px;min-width:42px}} .impact{{flex:0 0 auto;font-size:10px;font-weight:700;padding:2px 6px;border:1px solid;margin-top:1px}} .impact.positive{{color:var(--up)}} .impact.negative{{color:var(--down)}} .impact.neutral{{color:var(--muted)}}
 .news-meta{{display:flex;align-items:center;flex-wrap:wrap;gap:7px 14px;margin:6px 0 7px;padding-left:44px;color:var(--muted);font-size:11px}} time{{display:inline;margin:0}} .news-source a{{color:#175cd3;font-weight:700;text-decoration:none}} .news-source a:hover{{text-decoration:underline}} article p{{margin:4px 0;line-height:1.62;font-size:13px}} .rationale{{color:#344054}} .source-ref{{color:var(--accent);font-size:10px;font-weight:700}} .no-news{{font-size:12px;color:var(--muted);padding:12px 0;margin:0}}
 .metric-note{{border-left:3px solid var(--accent);padding:8px 12px;margin:12px 0;background:var(--soft)}} .metric-note p{{margin:4px 0;font-size:13px}} .failure{{border-left:3px solid var(--down);background:#fff5f4;padding:12px 14px;color:var(--down)}}
 .quality{{margin-top:14px;color:var(--muted);font-size:11px}} .quality summary{{cursor:pointer}} .sources{{margin-top:18px;border-top:1px solid var(--line);padding-top:10px;color:var(--muted);font-size:10px}} .sources summary{{cursor:pointer;font-weight:700}} .sources ol{{padding-left:20px;margin:10px 0 0}} .sources li{{margin:6px 0;line-height:1.45;overflow-wrap:anywhere}} .sources a{{color:#175cd3}} .provider{{display:inline;margin-left:5px;padding:1px 4px;background:var(--soft);color:var(--muted)}}
@@ -339,20 +366,21 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
     story.extend([brief, Spacer(1, 5 * mm), Paragraph("市场快照", styles["h3"])])
     snapshot = [["标的", "价格", "涨跌幅", "交易日", "来源"]]
     for instrument in instruments:
+        identity = Paragraph(f"{html.escape(instrument.name)}<br/><b>{html.escape(instrument.symbol)}</b>", styles["small"])
         if not instrument.prices:
-            snapshot.append([instrument.symbol, "数据受限", "-", str(instrument.trading_date or "-"), "-"])
+            snapshot.append([identity, "数据受限", "-", str(instrument.trading_date or "-"), "-"])
             continue
         price = instrument.prices[0]
         owner = next(result for result in result_list if instrument in result.instruments)
         labels = _source_labels(owner)
         snapshot.append([
-            instrument.symbol,
+            identity,
             f"{_format_number(price.value)} {price.currency}",
             _format_percent(price.change_pct),
             str(instrument.trading_date or price.as_of.date()),
             Paragraph(html.escape(_source_refs(price.source_ids, labels)), styles["small"]),
         ])
-    snapshot_table = Table(snapshot, colWidths=[25 * mm, 39 * mm, 24 * mm, 34 * mm, 37 * mm], repeatRows=1)
+    snapshot_table = Table(snapshot, colWidths=[47 * mm, 30 * mm, 20 * mm, 30 * mm, 32 * mm], repeatRows=1)
     snapshot_table.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), font_name), ("FONTSIZE", (0, 0), (-1, -1), 7.3),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F2F4F7")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#475467")),
@@ -364,7 +392,7 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
     for section_number, result in enumerate(result_list, start=1):
         status_suffix = f" · {STATUS_ZH[result.status]}" if result.status != TaskStatus.SUCCESS else ""
         source_labels = _source_labels(result)
-        story.append(Paragraph(f"{section_number:02d}  {result.title_zh}{status_suffix}", styles["h2"]))
+        story.append(Paragraph(f"{section_number}  {result.title_zh}{status_suffix}", styles["h2"]))
         for error in result.errors:
             issue_title = "失败原因" if result.status == TaskStatus.FAILED else "数据限制"
             story.append(Paragraph(f"{issue_title}：{html.escape(error.message_zh)}", styles["error"]))
@@ -377,9 +405,10 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
                 story.append(Paragraph(f"数据缺口：{html.escape(item.requirement_zh)} - {html.escape(item.conclusion_zh)}", styles["small"]))
             if len(unavailable_items) > 3:
                 story.append(Paragraph(f"其余 {len(unavailable_items) - 3} 项缺口详见随附 JSON 审计记录。", styles["small"]))
-        for instrument in result.instruments:
+        for instrument_number, instrument in enumerate(result.instruments, start=1):
             instrument_heading = Paragraph(
-                f"{html.escape(instrument.name)}  |  {html.escape(instrument.symbol)}  |  "
+                f"{section_number}.{instrument_number}  |  {html.escape(instrument.name)}  |  {html.escape(instrument.symbol)}  |  "
+                f"{ASSET_CLASS_ZH.get(instrument.asset_class, instrument.asset_class)} · "
                 f"{html.escape(instrument.exchange)} · {html.escape(instrument.currency)}",
                 styles["h3"],
             )
@@ -387,7 +416,7 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
                 data = [["类型", "价格", "涨跌", "涨跌幅", "时间", "来源"]]
                 for price in instrument.prices:
                     data.append([
-                        Paragraph(html.escape(price.kind), styles["small"]),
+                        Paragraph(html.escape(_price_kind_label(price.kind)), styles["small"]),
                         f"{_format_number(price.value)} {price.currency}",
                         _format_number(price.change_value),
                         _format_percent(price.change_pct),
@@ -405,21 +434,22 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
             else:
                 story.append(instrument_heading)
             if instrument.news:
-                for item in instrument.news:
+                for news_number, item in enumerate(instrument.news, start=1):
                     impact_style = styles[item.impact.value]
                     source_links = _pdf_source_links(result, item.source_ids)
-                    story.append(Paragraph(f"{IMPACT_ZH[item.impact.value]}  |  {html.escape(item.headline)}", impact_style))
+                    story.append(Paragraph(f"{section_number}.{instrument_number}.{news_number}  |  {IMPACT_ZH[item.impact.value]}  |  {html.escape(item.headline)}", impact_style))
                     if source_links:
                         story.append(Paragraph(f"来源：{source_links}", styles["small"]))
                     story.append(Paragraph(f"{html.escape(item.summary_zh)} {html.escape(item.rationale_zh)}", styles["body"]))
             else:
                 story.append(Paragraph("窗口内无重大新闻。", styles["meta"]))
         if result.section_news:
-            story.append(Paragraph("板块与行业新闻", styles["h3"]))
-            for item in result.section_news:
+            section_news_group = len(result.instruments) + 1
+            story.append(Paragraph(f"{section_number}.{section_news_group}  |  板块与行业新闻", styles["h3"]))
+            for news_number, item in enumerate(result.section_news, start=1):
                 impact_style = styles[item.impact.value]
                 source_links = _pdf_source_links(result, item.source_ids)
-                story.append(Paragraph(f"{IMPACT_ZH[item.impact.value]}  |  {html.escape(item.headline)}", impact_style))
+                story.append(Paragraph(f"{section_number}.{section_news_group}.{news_number}  |  {IMPACT_ZH[item.impact.value]}  |  {html.escape(item.headline)}", impact_style))
                 if source_links:
                     story.append(Paragraph(f"来源：{source_links}", styles["small"]))
                 story.append(Paragraph(f"{html.escape(item.summary_zh)} {html.escape(item.rationale_zh)}", styles["body"]))
