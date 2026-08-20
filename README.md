@@ -1,6 +1,6 @@
 # DailyReport
 
-面向 AWS EC2 的自动化中文金融日报系统。第二阶段 mock 全流程已完成；第三阶段已加入真实 OpenAI、免费行情、Marketaux/Google News 和 FRED provider，等待有效密钥完成端到端实测。Google Drive、Gmail 和 EC2 部署仍未启用。
+面向 AWS EC2 的自动化中文金融日报系统。mock 与真实 OpenAI 全流程已完成；新闻使用无需密钥的 Google News RSS 与 GDELT 2.0，Marketaux 仅作可选增强，宏观数据使用 FRED。Google Drive 与 Gmail 尚未启用。
 
 ## 本地运行
 
@@ -55,7 +55,7 @@ $PYTHON -m unittest discover -s tests -v
 
 - `mock` 为默认模式，必须显式指定 `--mode real` 才调用真实服务。
 - 真实免费行情目前使用 Binance、Yahoo Chart 辅助端点和 Stooq 交叉源；免费端点可能限流或覆盖不足，缺失必须进入结构化数据质量记录。
-- 真实 OpenAI 与 Marketaux 尚需轮换后的有效密钥完成端到端实测。
+- Marketaux Token 非必需；注册或额度异常不会阻断日报。
 - mock 交易日历支持周末和注入式节假日；第三阶段替换为权威交易所日历。
 - 不包含真实凭据，不会发送邮件或上传 Drive。
 - 第三阶段进度见 `docs/phase-3-integration.md`，成本和数据源建议见 `docs/phase-1-architecture.md`。

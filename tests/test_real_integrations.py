@@ -42,6 +42,12 @@ class RealIntegrationContractTests(unittest.TestCase):
             "2026-08-18T11:40:48+00:00",
         )
 
+    def test_gdelt_datetime_is_normalized_to_iso_8601(self) -> None:
+        self.assertEqual(
+            _iso_published_at("20260818T114048Z"),
+            "2026-08-18T11:40:48+00:00",
+        )
+
     def test_gateway_schema_is_strict_without_unsupported_formats(self) -> None:
         schema = _gateway_compatible_strict_schema()
         serialized = json.dumps(schema)

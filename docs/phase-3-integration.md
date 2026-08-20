@@ -10,7 +10,7 @@
 - Binance BTC/USDT 公共 24 小时行情，含多个官方 REST 入口 fallback。
 - Yahoo Chart 作为股票、期货和加密行情候选源；不作为唯一来源。
 - Stooq 作为可用标的的日线交叉源。
-- Marketaux 免费 API 加 Google News RSS 中英文关键词候选新闻。
+- Google News RSS 与 GDELT 2.0 提供无需密钥的中英文候选新闻；Marketaux 仅作可选增强。
 - FRED 公共 CSV：VIX、CPI、联邦基金有效利率基础数据。
 - AWS Secrets Manager JSON 与本地环境变量两种 secret 注入；所有落盘数据均不含 secret value。
 - 模型结果对 provider bundle 二次校验：价格值/前值、新闻 URL、宏观 metric ID、相对指标 ID 必须来自本次原始候选数据。
@@ -29,7 +29,7 @@
 1. 轮换已经出现在对话或附件中的旧密钥。
 2. 将新值放入本地环境变量或 AWS Secrets Manager，不写入仓库文件。
 3. 对配置的 `OPENAI_BASE_URL` 执行单板块 Responses API schema 测试。
-4. 对 Marketaux 免费额度执行六个股票标的覆盖测试。
+4. 对 Google News RSS 与 GDELT 执行六个股票标的覆盖测试，Marketaux 可用时补充覆盖。
 5. 完成一次六板块真实运行，输出各 provider 的成功率、缺失字段和调用量。
 
 若兼容网关不支持 Responses API 的 Pydantic/JSON Schema parse，本项目会明确失败，不会切换到不可校验的 Chat Completions 文本输出。

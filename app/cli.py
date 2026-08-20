@@ -50,6 +50,7 @@ def command_run(args: argparse.Namespace) -> int:
         responses_client=client,
         output_root=Path(args.output_root).resolve() if args.output_root else None,
         task_ids=set(args.task) if args.task else None,
+        report_mode=settings.mode,
     )
     result = pipeline.run(scheduled_for=_parse_as_of(args.as_of))
     print(json.dumps(result, ensure_ascii=False, indent=2))

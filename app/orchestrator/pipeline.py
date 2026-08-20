@@ -35,12 +35,14 @@ class DailyReportPipeline:
         output_root: Path | None = None,
         max_workers: int = 6,
         task_ids: set[str] | None = None,
+        report_mode: str = "mock",
     ) -> None:
         self.project_root = project_root
         self.providers = providers
         self.responses_client = responses_client
         self.output_root = output_root or project_root / "data" / "runs"
         self.max_workers = max_workers
+        self.report_mode = report_mode
         self.prompt_builder = PromptBuilder(project_root / "app" / "prompts")
         all_modules = load_module_configs(project_root / "app" / "modules")
         if task_ids:
@@ -101,7 +103,7 @@ class DailyReportPipeline:
             "tasks": [result.model_dump(mode="json") for result in results],
         }
         _write_json(run_dir / "merged" / "report_input.json", merged)
-        reports = render_reports(run_dir / "reports", context, results)
+        reports = render_reports(run_dir / "reports", context, results, mode=self.report_mode)
         status = "success" if all(item.status == TaskStatus.SUCCESS for item in results) else "partial_success" if any(item.status != TaskStatus.FAILED for item in results) else "failed"
         manifest = {
             "run_id": context.run_id,

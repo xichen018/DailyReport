@@ -46,7 +46,8 @@ class PipelineTests(unittest.TestCase):
             report_json = json.loads((run_dir / "reports" / "daily-report.json").read_text(encoding="utf-8"))
             self.assertTrue(all(task["research_checks"] for task in report_json["tasks"]))
             self.assertIn("https://example.test/market/", html_report)
-            self.assertIn("[src_1]", html_report)
+            self.assertIn("Mock Exchange", html_report)
+            self.assertNotIn("[src_1]", html_report)
             self.assertNotIn("utm_source=duplicate", html_report)
 
     def test_one_failure_still_generates_report(self) -> None:

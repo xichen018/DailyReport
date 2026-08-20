@@ -42,7 +42,10 @@ def _iso_published_at(value: str | None) -> str | None:
     if not value:
         return None
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if re.fullmatch(r"\d{8}T\d{6}Z", value):
+            parsed = datetime.strptime(value, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        else:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         parsed = parsedate_to_datetime(value)
     if parsed.tzinfo is None:
@@ -182,7 +185,7 @@ class FreeMarketDataProvider:
 
 
 class FreeNewsProvider:
-    name = "marketaux-google-news"
+    name = "google-news-gdelt-marketaux"
 
     def __init__(self, marketaux_token: str | None, timeout: float = 25.0) -> None:
         self.marketaux_token = marketaux_token
@@ -191,6 +194,7 @@ class FreeNewsProvider:
     def get_task_data(self, module: ModuleConfig, start_at: datetime, end_at: datetime) -> dict[str, Any]:
         articles: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
+        optional_errors: list[dict[str, str]] = []
         queries: list[dict[str, Any]] = []
         if module.instruments and self.marketaux_token:
             for instrument in module.instruments:
@@ -211,10 +215,41 @@ class FreeNewsProvider:
                             "entities": item.get("entities", []),
                         })
                 except Exception as exc:
-                    errors.append(_error("marketaux", exc))
+                    optional_errors.append(_error("marketaux", exc))
                     queries.append({"provider": "marketaux", "symbol": instrument.symbol, "status": "failed", "returned": 0})
         elif module.instruments:
-            errors.append({"provider": "marketaux", "error_type": "MissingSecret", "message": "marketaux_api_token unavailable"})
+            queries.append({"provider": "marketaux", "status": "skipped", "reason": "token unavailable"})
+
+        for instrument in module.instruments:
+            terms = list(instrument.aliases[:2]) or [instrument.name]
+            query_text = " OR ".join(f'\"{term}\"' for term in terms)
+            query = urllib.parse.urlencode({
+                "query": query_text,
+                "mode": "ArtList",
+                "maxrecords": 10,
+                "format": "json",
+                "sort": "DateDesc",
+                "startdatetime": start_at.astimezone(timezone.utc).strftime("%Y%m%d%H%M%S"),
+                "enddatetime": end_at.astimezone(timezone.utc).strftime("%Y%m%d%H%M%S"),
+            })
+            url = f"https://api.gdeltproject.org/api/v2/doc/doc?{query}"
+            try:
+                returned = json.loads(_get(url, self.timeout)).get("articles", [])
+                queries.append({"provider": "gdelt", "symbol": instrument.symbol, "status": "success", "returned": len(returned)})
+                for item in returned:
+                    articles.append({
+                        "instrument_id": instrument.instrument_id,
+                        "headline": item.get("title"),
+                        "description": None,
+                        "published_at": _iso_published_at(item.get("seendate")),
+                        "publisher": item.get("domain") or "GDELT",
+                        "url": item.get("url"),
+                        "provider": "gdelt-doc-2",
+                        "language": item.get("language"),
+                    })
+            except Exception as exc:
+                errors.append(_error("gdelt", exc))
+                queries.append({"provider": "gdelt", "symbol": instrument.symbol, "status": "failed", "returned": 0})
 
         search_queries = list(module.search_terms_zh) + list(module.search_terms_en)
         for query_text in search_queries:
@@ -229,7 +264,14 @@ class FreeNewsProvider:
                     })
             except Exception as exc:
                 errors.append(_error("google-news-rss", exc))
-        return {"provider": self.name, "articles": articles, "queries": queries, "errors": errors, "window": {"start_at": start_at.isoformat(), "end_at": end_at.isoformat()}}
+        return {
+            "provider": self.name,
+            "articles": articles,
+            "queries": queries,
+            "errors": errors,
+            "optional_errors": optional_errors,
+            "window": {"start_at": start_at.isoformat(), "end_at": end_at.isoformat()},
+        }
 
 
 class FredMacroDataProvider:
