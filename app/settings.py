@@ -13,6 +13,8 @@ class Settings:
     request_timeout_seconds: float = 25.0
     aws_region: str = "ap-southeast-1"
     secret_id: str | None = None
+    ses_sender: str = ""
+    ses_recipients: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls, mode: str | None = None) -> "Settings":
@@ -24,4 +26,10 @@ class Settings:
             request_timeout_seconds=float(os.getenv("HTTP_TIMEOUT_SECONDS", "25")),
             aws_region=os.getenv("AWS_REGION", "ap-southeast-1"),
             secret_id=os.getenv("DAILY_REPORT_SECRET_ID"),
+            ses_sender=os.getenv("SES_SENDER", "").strip(),
+            ses_recipients=tuple(
+                item.strip()
+                for item in os.getenv("SES_RECIPIENTS", "").split(",")
+                if item.strip()
+            ),
         )

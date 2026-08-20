@@ -1,0 +1,12 @@
+[Unit]
+Description=Run DailyReport every day at 08:15 Hong Kong time
+
+[Timer]
+OnCalendar=*-*-* 08:15:00 Asia/Hong_Kong
+Persistent=true
+AccuracySec=1min
+RandomizedDelaySec=0
+Unit=daily-report.service
+
+[Install]
+WantedBy=timers.target

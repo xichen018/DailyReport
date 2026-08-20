@@ -1,6 +1,6 @@
 # DailyReport
 
-面向 AWS EC2 的自动化中文金融日报系统。mock 与真实 OpenAI 全流程已完成；新闻使用无需密钥的 Google News RSS 与 GDELT 2.0，Marketaux 仅作可选增强，宏观数据使用 FRED。Google Drive 与 Gmail 尚未启用。
+面向 AWS EC2 的自动化中文金融日报系统。mock 与真实 OpenAI 全流程已完成；新闻使用无需密钥的 Google News RSS 与 GDELT 2.0，Marketaux 仅作可选增强，宏观数据使用 FRED。日报 PDF 可通过 Amazon SES 自动投递。
 
 ## 本地运行
 
@@ -37,6 +37,16 @@ python3 -m app.cli healthcheck --mode real
 python3 -m app.cli run --mode real
 ```
 
+生成后通过 Amazon SES 发送 PDF：
+
+```bash
+export SES_SENDER=sender@example.com
+export SES_RECIPIENTS=recipient@example.com
+python3 -m app.cli run --mode real --deliver
+```
+
+EC2 使用 `deploy/systemd/daily-report.service` 和 `daily-report.timer`，每天按 `Asia/Hong_Kong` 时区 08:15 运行，包括周末和节假日。
+
 使用 OpenAI-compatible 网关时，把 `OPENAI_BASE_URL` 设置为供应商给出的完整 API base URL。该网关必须实现 Responses API 的 `responses.parse`/JSON Schema 语义；只兼容 Chat Completions 的网关不能用于本项目，因为系统禁止自由文本降级。
 
 EC2 生产环境设置 `DAILY_REPORT_SECRET_ID`，对应 Secrets Manager JSON 仅包含 `openai_api_key` 和 `marketaux_api_token` 等 secret value。不要同时在环境变量中保存值。
@@ -57,5 +67,5 @@ $PYTHON -m unittest discover -s tests -v
 - 真实免费行情目前使用 Binance、Yahoo Chart 辅助端点和 Stooq 交叉源；免费端点可能限流或覆盖不足，缺失必须进入结构化数据质量记录。
 - Marketaux Token 非必需；注册或额度异常不会阻断日报。
 - mock 交易日历支持周末和注入式节假日；第三阶段替换为权威交易所日历。
-- 不包含真实凭据，不会发送邮件或上传 Drive。
+- 不包含真实凭据；只有显式传入 `--deliver` 才会通过 SES 发送邮件。
 - 第三阶段进度见 `docs/phase-3-integration.md`，成本和数据源建议见 `docs/phase-1-architecture.md`。

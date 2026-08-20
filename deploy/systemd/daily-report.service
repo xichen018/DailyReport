@@ -1,0 +1,17 @@
+[Unit]
+Description=Generate and email the DailyReport financial report
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/DailyReport
+EnvironmentFile=/home/ubuntu/.config/daily-report/secrets.env
+ExecStart=/home/ubuntu/DailyReport/.venv/bin/python -m app.cli run --mode real --deliver
+TimeoutStartSec=3h
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

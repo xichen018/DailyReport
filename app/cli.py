@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from app.integrations.mock_openai import MockResponsesClient
 from app.integrations.openai_responses import OpenAIResponsesClient
 from app.integrations.secrets import load_secrets, require_secret
+from app.integrations.ses_email import send_pdf_report
 from app.modules.loader import load_module_configs
 from app.orchestrator.pipeline import DailyReportPipeline
 from app.providers.mock import MockProviderBundle
@@ -53,6 +54,13 @@ def command_run(args: argparse.Namespace) -> int:
         report_mode=settings.mode,
     )
     result = pipeline.run(scheduled_for=_parse_as_of(args.as_of))
+    if args.deliver:
+        result["delivery"] = send_pdf_report(
+            result,
+            sender=settings.ses_sender,
+            recipients=settings.ses_recipients,
+            region=settings.aws_region,
+        )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["status"] in {"success", "partial_success"} else 1
 
@@ -91,6 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--output-root")
     run.add_argument("--fail-task", action="append", default=[], help="inject a task failure")
     run.add_argument("--task", action="append", default=[], help="run only this task_id; may be repeated")
+    run.add_argument("--deliver", action="store_true", help="send the generated PDF through Amazon SES")
     run.set_defaults(func=command_run)
     health = subparsers.add_parser("healthcheck")
     health.add_argument("--mode", choices=("mock", "real"), default=None)
