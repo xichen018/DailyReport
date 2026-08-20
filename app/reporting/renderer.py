@@ -13,7 +13,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFError, TTFont
-from reportlab.platypus import KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.schemas.models import ResearchTaskResult, RunContext, TaskStatus
 
@@ -74,6 +74,13 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
     snapshot_rows: list[str] = []
     for instrument in instruments:
         if not instrument.prices:
+            snapshot_rows.append(
+                "<tr>"
+                f"<td><strong>{html.escape(instrument.symbol)}</strong><span>{html.escape(instrument.name)}</span></td>"
+                "<td class='numeric flat'>数据受限</td><td class='numeric flat'>-</td>"
+                f"<td>{html.escape(instrument.trading_date.isoformat() if instrument.trading_date else '-')}</td>"
+                "<td class='source-ref'>-</td></tr>"
+            )
             continue
         price = instrument.prices[0]
         owner = next(result for result in result_list if instrument in result.instruments)
@@ -279,6 +286,7 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
     snapshot = [["标的", "价格", "涨跌幅", "交易日", "来源"]]
     for instrument in instruments:
         if not instrument.prices:
+            snapshot.append([instrument.symbol, "数据受限", "-", str(instrument.trading_date or "-"), "-"])
             continue
         price = instrument.prices[0]
         owner = next(result for result in result_list if instrument in result.instruments)
@@ -300,8 +308,6 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
     story.extend([snapshot_table, Spacer(1, 5 * mm)])
 
     for section_number, result in enumerate(result_list, start=1):
-        if section_number == 6:
-            story.append(PageBreak())
         status_suffix = f" · {STATUS_ZH[result.status]}" if result.status != TaskStatus.SUCCESS else ""
         source_labels = _source_labels(result)
         story.append(Paragraph(f"{section_number:02d}  {result.title_zh}{status_suffix}", styles["h2"]))
