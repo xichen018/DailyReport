@@ -82,6 +82,31 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(result["tasks"], {"hk_equities": "success"})
             self.assertEqual(len(client.calls), 1)
 
+    def test_validation_retry_receives_specific_feedback(self) -> None:
+        class RetryClient(MockResponsesClient):
+            def create(self, module, prompt, provider_data):
+                raw = super().create(module, prompt, provider_data)
+                if len(self.calls) == 1:
+                    raw["task_id"] = "wrong_task"
+                return raw
+
+        with tempfile.TemporaryDirectory() as directory:
+            client = RetryClient()
+            pipeline = DailyReportPipeline(
+                ROOT,
+                MockProviderBundle(),
+                client,
+                output_root=Path(directory),
+                task_ids={"hk_equities"},
+            )
+            result = pipeline.run(datetime(2026, 8, 18, 8, 15, 3, tzinfo=ZoneInfo("Asia/Hong_Kong")))
+
+            self.assertEqual(result["tasks"], {"hk_equities": "success"})
+            self.assertEqual(len(client.calls), 2)
+            feedback = client.calls[1]["prompt"]["validation_feedback"]
+            self.assertIn("task_id does not match module", feedback)
+            self.assertIn("不得只返回补丁", feedback)
+
 
 if __name__ == "__main__":
     unittest.main()

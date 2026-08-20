@@ -70,6 +70,8 @@ class OpenAIResponsesClient:
             "run_context": prompt["run_context"],
             "provider_data": provider_data,
         }
+        if prompt.get("validation_feedback"):
+            task_input["validation_feedback"] = prompt["validation_feedback"]
         response = self.client.responses.create(
             model=self.model,
             reasoning={"effort": self.reasoning_effort},

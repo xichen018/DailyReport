@@ -81,10 +81,17 @@ class DailyReportPipeline:
                     validated = validate_result(parsed, module, provider_data)
                     _write_json(run_dir / "raw" / "openai" / f"{module.task_id}.json", raw)
                     break
-                except (ValidationError, ValidationFailure):
+                except (ValidationError, ValidationFailure) as exc:
                     _write_json(run_dir / "raw" / "openai" / f"{module.task_id}.attempt-{attempt}.json", raw)
                     if attempt == 2:
                         raise
+                    prompt = {
+                        **prompt,
+                        "validation_feedback": (
+                            f"上一次独立请求未通过程序校验：{exc}。本次必须重新生成完整结果并修正该问题；"
+                            "逐一核对 provider_data 中的每条候选记录及其 URL，不得只返回补丁。"
+                        ),
+                    }
                     LOGGER.warning("task validation failed; retrying once: %s", module.task_id, exc_info=True)
         except (ValidationError, ValidationFailure, Exception) as exc:
             LOGGER.exception("task failed: %s", module.task_id)
