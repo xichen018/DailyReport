@@ -52,6 +52,7 @@ def command_run(args: argparse.Namespace) -> int:
         output_root=Path(args.output_root).resolve() if args.output_root else None,
         task_ids=set(args.task) if args.task else None,
         report_mode=settings.mode,
+        max_workers=settings.openai_max_workers if settings.mode == "real" else 6,
     )
     result = pipeline.run(scheduled_for=_parse_as_of(args.as_of))
     if args.deliver:

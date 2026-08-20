@@ -104,8 +104,11 @@ def validate_result(
     if len(actual_checks) != len(result.research_checks):
         raise ValidationFailure("duplicate research check")
     for check in result.research_checks:
-        if set(check.source_ids) - source_ids:
-            raise ValidationFailure(f"research check has unknown source: {check.check_id}")
+        unknown_source_ids = set(check.source_ids) - source_ids
+        if unknown_source_ids:
+            raise ValidationFailure(
+                f"research check {check.check_id} has unknown source ids: {sorted(unknown_source_ids)}"
+            )
 
     warnings = list(result.warnings)
     market_candidates: dict[str, list[dict[str, Any]]] = {}
@@ -350,7 +353,9 @@ def validate_result(
     if provider_data is not None:
         unreported_news = news_urls - reported_news_urls
         if unreported_news:
-            raise ValidationFailure(f"provider news articles were not summarized: {len(unreported_news)}")
+            raise ValidationFailure(
+                f"provider news articles were not summarized: {sorted(unreported_news)}"
+            )
 
     for observation in result.macro_observations:
         if set(observation.source_ids) - source_ids:
