@@ -12,6 +12,7 @@ dependencies = [
   "reportlab>=4.2,<5",
   "openai>=2.21,<3",
   "boto3>=1.35,<2",
+  "opencc-python-reimplemented>=0.1.7,<0.2",
 ]
 
 [project.scripts]

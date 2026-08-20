@@ -6,6 +6,7 @@ from typing import Any
 
 from app.modules.loader import ModuleConfig
 from app.schemas.models import ResearchTaskResult
+from app.text.chinese import simplify_strings
 
 
 def _gateway_compatible_strict_schema() -> dict[str, Any]:
@@ -87,7 +88,7 @@ class OpenAIResponsesClient:
         )
         if not response.output_text:
             raise RuntimeError("OpenAI response did not contain structured JSON output")
-        parsed = ResearchTaskResult.model_validate(json.loads(response.output_text))
+        parsed = ResearchTaskResult.model_validate(simplify_strings(json.loads(response.output_text)))
         result = parsed.model_dump(mode="json")
         result["request_id"] = response.id
         return result
