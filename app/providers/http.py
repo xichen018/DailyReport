@@ -220,13 +220,16 @@ class FreeNewsProvider:
         elif module.instruments:
             queries.append({"provider": "marketaux", "status": "skipped", "reason": "token unavailable"})
 
-        for instrument in module.instruments:
-            terms = list(instrument.aliases[:2]) or [instrument.name]
+        if module.instruments:
+            terms = [
+                (instrument.aliases[0] if instrument.aliases else instrument.name)
+                for instrument in module.instruments
+            ]
             query_text = " OR ".join(f'\"{term}\"' for term in terms)
             query = urllib.parse.urlencode({
                 "query": query_text,
                 "mode": "ArtList",
-                "maxrecords": 10,
+                "maxrecords": 25,
                 "format": "json",
                 "sort": "DateDesc",
                 "startdatetime": start_at.astimezone(timezone.utc).strftime("%Y%m%d%H%M%S"),
@@ -235,10 +238,10 @@ class FreeNewsProvider:
             url = f"https://api.gdeltproject.org/api/v2/doc/doc?{query}"
             try:
                 returned = json.loads(_get(url, self.timeout)).get("articles", [])
-                queries.append({"provider": "gdelt", "symbol": instrument.symbol, "status": "success", "returned": len(returned)})
+                queries.append({"provider": "gdelt", "scope": module.task_id, "status": "success", "returned": len(returned)})
                 for item in returned:
                     articles.append({
-                        "instrument_id": instrument.instrument_id,
+                        "instrument_id": None,
                         "headline": item.get("title"),
                         "description": None,
                         "published_at": _iso_published_at(item.get("seendate")),
@@ -248,8 +251,8 @@ class FreeNewsProvider:
                         "language": item.get("language"),
                     })
             except Exception as exc:
-                errors.append(_error("gdelt", exc))
-                queries.append({"provider": "gdelt", "symbol": instrument.symbol, "status": "failed", "returned": 0})
+                optional_errors.append(_error("gdelt", exc))
+                queries.append({"provider": "gdelt", "scope": module.task_id, "status": "failed", "returned": 0})
 
         search_queries = list(module.search_terms_zh) + list(module.search_terms_en)
         for query_text in search_queries:
