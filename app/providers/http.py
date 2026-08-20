@@ -256,10 +256,13 @@ class FreeNewsProvider:
 
         search_queries = list(module.search_terms_zh) + list(module.search_terms_en)
         for query_text in search_queries:
-            url = "https://news.google.com/rss/search?" + urllib.parse.urlencode({"q": query_text, "hl": "zh-CN", "gl": "HK", "ceid": "HK:zh-Hans"})
+            windowed_query = f"({query_text}) when:2d"
+            url = "https://news.google.com/rss/search?" + urllib.parse.urlencode({"q": windowed_query, "hl": "zh-CN", "gl": "HK", "ceid": "HK:zh-Hans"})
             try:
                 root = ET.fromstring(_get(url, self.timeout))
-                for item in root.findall("./channel/item")[:5]:
+                returned = root.findall("./channel/item")[:10]
+                queries.append({"provider": "google-news-rss", "query": query_text, "status": "success", "returned": len(returned)})
+                for item in returned:
                     articles.append({
                         "instrument_id": None, "headline": item.findtext("title"), "description": item.findtext("description"),
                         "published_at": _iso_published_at(item.findtext("pubDate")), "publisher": item.findtext("source") or "Google News",
@@ -267,9 +270,18 @@ class FreeNewsProvider:
                     })
             except Exception as exc:
                 errors.append(_error("google-news-rss", exc))
+                queries.append({"provider": "google-news-rss", "query": query_text, "status": "failed", "returned": 0})
+        window_articles = []
+        for article in articles:
+            published_at = article.get("published_at")
+            if not published_at:
+                continue
+            published = datetime.fromisoformat(str(published_at).replace("Z", "+00:00"))
+            if start_at <= published.astimezone(start_at.tzinfo) <= end_at:
+                window_articles.append(article)
         return {
             "provider": self.name,
-            "articles": articles,
+            "articles": window_articles,
             "queries": queries,
             "errors": errors,
             "optional_errors": optional_errors,

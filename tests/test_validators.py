@@ -11,7 +11,7 @@ from app.modules.loader import load_module_configs
 from app.orchestrator.context import build_run_context
 from app.prompts.builder import PromptBuilder
 from app.providers.mock import MockProviderBundle
-from app.schemas.models import ResearchTaskResult
+from app.schemas.models import CheckStatus, ResearchTaskResult
 from app.validators.result import ValidationFailure, canonical_url, validate_result
 
 
@@ -115,6 +115,33 @@ class ValidatorTests(unittest.TestCase):
         broken.research_checks.append(extra)
         with self.assertRaisesRegex(ValidationFailure, "unexpected research checks"):
             validate_result(broken, self.module)
+
+    def test_successful_news_search_normalizes_no_news_to_no_material_finding(self) -> None:
+        result = ResearchTaskResult.model_validate(self.raw)
+        news_check = next(item for item in result.research_checks if item.requirement_type == "news")
+        news_check.status = CheckStatus.DATA_UNAVAILABLE
+        self.provider_data["news"]["queries"] = [
+            {"provider": "google-news-rss", "query": "test", "status": "success", "returned": 0}
+        ]
+        validated = validate_result(result, self.module, self.provider_data)
+        self.assertEqual(news_check.status, CheckStatus.NO_MATERIAL_FINDING)
+        self.assertTrue(any(item.code == "NO_NEWS_IS_NOT_MISSING_DATA" for item in validated.warnings))
+
+    def test_every_provider_news_article_must_be_summarized(self) -> None:
+        result = ResearchTaskResult.model_validate(self.raw)
+        self.provider_data["news"]["articles"].append(
+            {
+                "instrument_id": None,
+                "headline": "Unreported provider article",
+                "description": "test",
+                "published_at": self.context.window.end_at.isoformat(),
+                "publisher": "Test News",
+                "url": "https://example.test/news/unreported",
+                "provider": "test-news",
+            }
+        )
+        with self.assertRaisesRegex(ValidationFailure, "provider news articles were not summarized"):
+            validate_result(result, self.module, self.provider_data)
 
 
 if __name__ == "__main__":

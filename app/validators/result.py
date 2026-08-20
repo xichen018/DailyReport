@@ -121,6 +121,57 @@ def validate_result(
             for item in provider_data.get("macro", {}).get("relative_metrics", [])
             if item.get("metric_id")
         }
+        google_queries = [
+            item
+            for item in provider_data.get("news", {}).get("queries", [])
+            if item.get("provider") == "google-news-rss"
+        ]
+        mandatory_news_completed = bool(google_queries) and all(item.get("status") == "success" for item in google_queries)
+        if mandatory_news_completed:
+            for check in result.research_checks:
+                if (
+                    check.requirement_type in {"news", "industry", "instrument_focus"}
+                    and check.status == CheckStatus.DATA_UNAVAILABLE
+                ):
+                    check.status = CheckStatus.NO_MATERIAL_FINDING
+                    check.conclusion_zh = f"已完成必查新闻源检索；窗口内未发现相关重要新闻。{check.conclusion_zh}"
+                    warnings.append(
+                        TaskWarning(
+                            code="NO_NEWS_IS_NOT_MISSING_DATA",
+                            message_zh=f"已将无新闻候选规范为无重要发现：{check.scope_id} / {check.requirement_zh}",
+                            field_path=f"research_checks.{check.check_id}",
+                        )
+                    )
+    source_map = {source.source_id: source for source in result.sources}
+    reported_news_urls: set[str] = set()
+
+    def validated_news(items: list[Any], field_path: str) -> list[Any]:
+        deduped = []
+        seen_keys: set[tuple[str, str]] = set()
+        for news in sorted(items, key=lambda item: item.published_at, reverse=True):
+            missing = set(news.source_ids) - source_ids
+            if missing:
+                raise ValidationFailure(f"news has unknown source ids: {sorted(missing)}")
+            if not news.outside_window and not (result.window.start_at <= news.published_at <= result.window.end_at):
+                raise ValidationFailure(f"news outside research window: {news.headline}")
+            urls = sorted(canonical_url(str(source_map[sid].url)) for sid in news.source_ids)
+            if provider_data is not None and not any(url in news_urls for url in urls):
+                raise ValidationFailure(f"news URL not found in provider data: {news.headline}")
+            key = (normalized_headline(news.headline), "|".join(urls))
+            if key in seen_keys or (urls and all(url in reported_news_urls for url in urls)):
+                warnings.append(
+                    TaskWarning(
+                        code="DUPLICATE_NEWS_REMOVED",
+                        message_zh=f"已移除重复新闻：{news.headline}",
+                        field_path=field_path,
+                    )
+                )
+                continue
+            seen_keys.add(key)
+            reported_news_urls.update(urls)
+            deduped.append(news)
+        return deduped
+
     for instrument in result.instruments:
         configured = registry.get(instrument.instrument_id)
         if configured is None:
@@ -192,31 +243,13 @@ def validate_result(
                             field_path=f"instruments.{instrument.instrument_id}.prices.{price.kind}",
                         )
                     )
-        deduped = []
-        seen: set[tuple[str, str]] = set()
-        source_map = {source.source_id: source for source in result.sources}
-        for news in sorted(instrument.news, key=lambda item: item.published_at, reverse=True):
-            missing = set(news.source_ids) - source_ids
-            if missing:
-                raise ValidationFailure(f"news has unknown source ids: {sorted(missing)}")
-            if not news.outside_window and not (result.window.start_at <= news.published_at <= result.window.end_at):
-                raise ValidationFailure(f"news outside research window: {news.headline}")
-            urls = sorted(canonical_url(str(source_map[sid].url)) for sid in news.source_ids)
-            if provider_data is not None and not any(url in news_urls for url in urls):
-                raise ValidationFailure(f"news URL not found in provider data: {news.headline}")
-            key = (normalized_headline(news.headline), "|".join(urls))
-            if key in seen:
-                warnings.append(
-                    TaskWarning(
-                        code="DUPLICATE_NEWS_REMOVED",
-                        message_zh=f"已移除重复新闻：{news.headline}",
-                        field_path=f"instruments.{instrument.instrument_id}.news",
-                    )
-                )
-                continue
-            seen.add(key)
-            deduped.append(news)
-        instrument.news = deduped
+        instrument.news = validated_news(instrument.news, f"instruments.{instrument.instrument_id}.news")
+
+    result.section_news = validated_news(result.section_news, "section_news")
+    if provider_data is not None:
+        unreported_news = news_urls - reported_news_urls
+        if unreported_news:
+            raise ValidationFailure(f"provider news articles were not summarized: {len(unreported_news)}")
 
     for observation in result.macro_observations:
         if set(observation.source_ids) - source_ids:
@@ -239,6 +272,8 @@ def validate_result(
             referenced_source_ids.update(price.source_ids)
         for news in instrument.news:
             referenced_source_ids.update(news.source_ids)
+    for news in result.section_news:
+        referenced_source_ids.update(news.source_ids)
     for observation in result.macro_observations:
         referenced_source_ids.update(observation.source_ids)
     for metric in result.relative_metrics:

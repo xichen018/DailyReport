@@ -70,7 +70,9 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
     result_list = list(results)
     delivered = sum(item.status != TaskStatus.FAILED for item in result_list)
     instruments = [instrument for result in result_list for instrument in result.instruments]
-    news_items = [item for instrument in instruments for item in instrument.news]
+    news_items = [item for instrument in instruments for item in instrument.news] + [
+        item for result in result_list for item in result.section_news
+    ]
     snapshot_rows: list[str] = []
     for instrument in instruments:
         if not instrument.prices:
@@ -141,6 +143,16 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
                 body.append("</div>")
             else:
                 body.append("<p class='no-news'>研究窗口内未发现达到披露阈值的重大新闻。</p>")
+        if result.section_news:
+            body.append("<div class='instrument-head'><h3>板块与行业新闻</h3><span>全部窗口内候选</span></div><div class='news'>")
+            for item in result.section_news:
+                body.append(
+                    f"<article><div class='event-line'><span class='impact {html.escape(item.impact.value)}'>{IMPACT_ZH[item.impact.value]}</span>"
+                    f"<h4>{html.escape(item.headline)}</h4><span class='source-ref'>{html.escape(_source_refs(item.source_ids, source_labels))}</span></div>"
+                    f"<time>{html.escape(item.published_at.strftime('%Y-%m-%d %H:%M %Z'))}</time>"
+                    f"<p>{html.escape(item.summary_zh)}</p><p class='rationale'><strong>投资含义：</strong>{html.escape(item.rationale_zh)}</p></article>"
+                )
+            body.append("</div>")
         if result.macro_observations:
             rows = "".join(
                 f"<tr><td>{html.escape(item.label)}</td><td>{html.escape(_format_number(item.value))}</td><td>{html.escape(item.unit)}</td><td>{html.escape(item.period)}</td><td>{html.escape(_source_refs(item.source_ids, source_labels))}</td></tr>"
@@ -249,7 +261,7 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
     result_list = list(results)
     delivered = sum(item.status != TaskStatus.FAILED for item in result_list)
     instruments = [instrument for result in result_list for instrument in result.instruments]
-    news_count = sum(len(instrument.news) for instrument in instruments)
+    news_count = sum(len(instrument.news) for instrument in instruments) + sum(len(result.section_news) for result in result_list)
     doc = SimpleDocTemplate(str(path), pagesize=A4, leftMargin=17 * mm, rightMargin=17 * mm, topMargin=20 * mm, bottomMargin=17 * mm, title="金融市场日报")
 
     def decorate_page(canvas: object, document: object) -> None:
@@ -353,6 +365,12 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
                     story.append(Paragraph(f"{html.escape(item.summary_zh)} {html.escape(item.rationale_zh)}", styles["body"]))
             else:
                 story.append(Paragraph("窗口内无重大新闻。", styles["meta"]))
+        if result.section_news:
+            story.append(Paragraph("板块与行业新闻", styles["h3"]))
+            for item in result.section_news:
+                impact_style = styles[item.impact.value]
+                story.append(Paragraph(f"{IMPACT_ZH[item.impact.value]}  |  {html.escape(item.headline)} [{html.escape(_source_refs(item.source_ids, source_labels))}]", impact_style))
+                story.append(Paragraph(f"{html.escape(item.summary_zh)} {html.escape(item.rationale_zh)}", styles["body"]))
         for item in result.macro_observations:
             story.append(Paragraph(f"{item.label}：{_format_number(item.value)} {item.unit}（{item.period}）[{html.escape(_source_refs(item.source_ids, source_labels))}]", styles["body"]))
         for metric in result.relative_metrics:

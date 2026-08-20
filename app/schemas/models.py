@@ -184,6 +184,7 @@ class ResearchTaskResult(StrictModel):
     status: TaskStatus
     window: Window
     instruments: list[InstrumentResult] = Field(default_factory=list)
+    section_news: list[NewsItem] = Field(default_factory=list)
     macro_observations: list[MacroObservation] = Field(default_factory=list)
     relative_metrics: list[RelativeMetric] = Field(default_factory=list)
     research_checks: list[ResearchCheck] = Field(default_factory=list)

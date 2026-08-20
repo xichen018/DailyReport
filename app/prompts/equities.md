@@ -1,1 +1,1 @@
-研究配置中的股票：逐项执行 price_checks、news_categories、industry_topics 和 triggered_checks，不得把多个必查项合并后跳过。对每个标的同时执行其 focus；核对配置要求的价格。只有 triggered_checks 明确要求时才检查盘前盘后异动，不得把美股规则套用于港股。每条新闻标记价格影响并用 1-2 句说明逻辑。provider 的 queries 中 Marketaux `status=success, returned=0` 表示已完成必查且无候选，不得标记为未调用。
+研究配置中的股票：逐项执行 price_checks、news_categories、industry_topics 和 triggered_checks，不得把多个必查项合并后跳过。对每个标的同时执行其 focus；核对配置要求的价格。只有 triggered_checks 明确要求时才检查盘前盘后异动，不得把美股规则套用于港股。逐条总结全部窗口内候选新闻，每条标记价格影响并用 1-2 句说明逻辑；重点分类和 focus 相关事件排在前面。检索成功但没有新闻表示已查无结果，使用 no_material_finding，不得标记数据缺失。
