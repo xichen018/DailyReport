@@ -55,6 +55,38 @@ def _source_refs(source_ids: list[str], labels: dict[str, str] | None = None) ->
     return " · ".join(display.get(source_id, source_id) for source_id in source_ids)
 
 
+def _html_source_links(result: ResearchTaskResult, source_ids: list[str]) -> str:
+    source_map = {source.source_id: source for source in result.sources}
+    links: list[str] = []
+    for source_id in source_ids:
+        source = source_map.get(source_id)
+        if source is None:
+            continue
+        publisher = source.publisher.strip()
+        provider = source.provider.strip()
+        label = publisher if publisher and publisher.lower() not in {"unknown", "n/a"} else provider
+        links.append(
+            f"<a href='{html.escape(str(source.url), quote=True)}' target='_blank' rel='noopener noreferrer'>"
+            f"{html.escape(label)} · 查看原文</a>"
+        )
+    return "<span aria-hidden='true'> · </span>".join(links)
+
+
+def _pdf_source_links(result: ResearchTaskResult, source_ids: list[str]) -> str:
+    source_map = {source.source_id: source for source in result.sources}
+    links: list[str] = []
+    for source_id in source_ids:
+        source = source_map.get(source_id)
+        if source is None:
+            continue
+        publisher = source.publisher.strip()
+        provider = source.provider.strip()
+        label = publisher if publisher and publisher.lower() not in {"unknown", "n/a"} else provider
+        safe_url = html.escape(str(source.url), quote=True)
+        links.append(f'<link href="{safe_url}" color="#175CD3">{html.escape(label)} · 查看原文</link>')
+    return " · ".join(links)
+
+
 def _change_class(value: object) -> str:
     if value is None:
         return "flat"
@@ -120,7 +152,12 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
                 f"<tbody>{rows}</tbody></table></details>"
             )
         for instrument in result.instruments:
-            body.append(f"<div class='instrument-head'><h3>{html.escape(instrument.name)}</h3><span>{html.escape(instrument.symbol)}</span></div>")
+            body.append(
+                "<div class='instrument'>"
+                f"<div class='instrument-head'><div><h3>{html.escape(instrument.name)}</h3>"
+                f"<strong>{html.escape(instrument.symbol)}</strong></div>"
+                f"<span>{html.escape(instrument.exchange)} · {html.escape(instrument.currency)}</span></div>"
+            )
             if instrument.prices:
                 rows = "".join(
                     "<tr>"
@@ -134,22 +171,27 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
             if instrument.news:
                 body.append("<div class='news'>")
                 for item in instrument.news:
+                    source_links = _html_source_links(result, item.source_ids)
                     body.append(
                         f"<article><div class='event-line'><span class='impact {html.escape(item.impact.value)}'>{IMPACT_ZH[item.impact.value]}</span>"
-                        f"<h4>{html.escape(item.headline)}</h4><span class='source-ref'>{html.escape(_source_refs(item.source_ids, source_labels))}</span></div>"
-                        f"<time>{html.escape(item.published_at.strftime('%Y-%m-%d %H:%M %Z'))}</time>"
+                        f"<h4>{html.escape(item.headline)}</h4></div>"
+                        f"<div class='news-meta'><time>{html.escape(item.published_at.strftime('%Y-%m-%d %H:%M %Z'))}</time>"
+                        f"<span class='news-source'>来源：{source_links}</span></div>"
                         f"<p>{html.escape(item.summary_zh)}</p><p class='rationale'><strong>投资含义：</strong>{html.escape(item.rationale_zh)}</p></article>"
                     )
                 body.append("</div>")
             else:
                 body.append("<p class='no-news'>研究窗口内未发现达到披露阈值的重大新闻。</p>")
+            body.append("</div>")
         if result.section_news:
             body.append("<div class='instrument-head'><h3>板块与行业新闻</h3><span>全部窗口内候选</span></div><div class='news'>")
             for item in result.section_news:
+                source_links = _html_source_links(result, item.source_ids)
                 body.append(
                     f"<article><div class='event-line'><span class='impact {html.escape(item.impact.value)}'>{IMPACT_ZH[item.impact.value]}</span>"
-                    f"<h4>{html.escape(item.headline)}</h4><span class='source-ref'>{html.escape(_source_refs(item.source_ids, source_labels))}</span></div>"
-                    f"<time>{html.escape(item.published_at.strftime('%Y-%m-%d %H:%M %Z'))}</time>"
+                    f"<h4>{html.escape(item.headline)}</h4></div>"
+                    f"<div class='news-meta'><time>{html.escape(item.published_at.strftime('%Y-%m-%d %H:%M %Z'))}</time>"
+                    f"<span class='news-source'>来源：{source_links}</span></div>"
                     f"<p>{html.escape(item.summary_zh)}</p><p class='rationale'><strong>投资含义：</strong>{html.escape(item.rationale_zh)}</p></article>"
                 )
             body.append("</div>")
@@ -164,7 +206,7 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
         if result.warnings:
             body.append("<details class='quality'><summary>数据质量记录（{count}）</summary><ul>{items}</ul></details>".format(count=len(result.warnings), items="".join(f"<li>{html.escape(item.message_zh)}</li>" for item in result.warnings)))
         if result.sources:
-            body.append("<div class='sources'><h3>来源与时间戳</h3><ol>")
+            body.append("<details class='sources'><summary>展开完整来源审计记录</summary><ol>")
             for source in result.sources:
                 published = f"，发布时间 {html.escape(source.published_at.isoformat())}" if source.published_at else ""
                 body.append(
@@ -172,7 +214,7 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
                     f"<span class='provider'>{html.escape(source.provider)}</span>{published}："
                     f"<a href='{html.escape(str(source.url), quote=True)}' rel='noopener noreferrer'>{html.escape(str(source.url))}</a></li>"
                 )
-            body.append("</ol></div>")
+            body.append("</ol></details>")
         sections.append(
             f"<section><div class='section-head'><div><span class='section-no'>{section_number:02d}</span><h2>{html.escape(result.title_zh)}</h2></div>"
             f"<span class='status {status_class}'>{STATUS_ZH[result.status]}</span></div>{''.join(body)}</section>"
@@ -194,15 +236,15 @@ main{{max-width:1040px;margin:24px auto;background:var(--paper);padding:46px 54p
 .brief{{padding:22px 0 26px;border-bottom:2px solid var(--ink)}} .brief h2{{font-size:15px;margin:0 0 14px;text-transform:uppercase}} .brief-grid{{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line)}} .brief-item{{padding:12px 14px;border-right:1px solid var(--line)}} .brief-item:last-child{{border:0}} .brief-item span{{display:block;font-size:11px;color:var(--muted)}} .brief-item strong{{display:block;font-size:20px;margin-top:4px}}
 .snapshot{{margin-top:20px}} .snapshot h3{{font-size:13px;margin:0 0 8px}} section{{padding:30px 0;border-bottom:1px solid var(--line)}}
 .section-head{{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}} .section-head>div{{display:flex;align-items:baseline;gap:12px}} .section-no{{font-size:12px;color:var(--accent);font-weight:700}} h2{{font-size:22px;margin:0}} .status{{font-size:11px;padding:2px 7px;border:1px solid var(--accent);color:var(--accent);font-weight:700}} .status.failed{{border-color:var(--down);color:var(--down)}}
-.instrument-head{{display:flex;align-items:baseline;gap:10px;margin:22px 0 8px}} .instrument-head h3{{font-size:16px;margin:0}} .instrument-head span{{font-size:12px;color:var(--muted);font-weight:700}}
+.instrument{{margin:22px 0 28px;border-top:2px solid var(--ink);padding-top:0}} .instrument-head{{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0;padding:11px 0 10px;border-bottom:1px solid var(--line)}} .instrument-head>div{{display:flex;align-items:baseline;gap:10px;min-width:0}} .instrument-head h3{{font-size:17px;margin:0}} .instrument-head strong{{font-size:13px;color:var(--accent)}} .instrument-head span{{font-size:11px;color:var(--muted);font-weight:700;white-space:nowrap}}
 .coverage{{display:flex;justify-content:space-between;gap:12px;padding:9px 11px;background:var(--accent-soft);font-size:12px;margin-bottom:12px}}
 table{{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}} th,td{{padding:8px 9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;overflow-wrap:anywhere}} th{{background:var(--soft);font-size:10px;color:#475467;text-transform:uppercase}} td:first-child{{font-weight:500}} td span{{display:block;font-size:10px;color:var(--muted);font-weight:400;margin-top:2px}} .numeric{{text-align:right;white-space:nowrap}} .up{{color:var(--up);font-weight:700}} .down{{color:var(--down);font-weight:700}} .flat{{color:var(--muted)}} small{{font-size:9px;color:var(--muted)}}
-.data-table{{margin-bottom:13px}} .news{{border-top:1px solid var(--line)}} article{{padding:13px 0;border-bottom:1px solid var(--line)}} .event-line{{display:flex;align-items:center;gap:8px}} h4{{font-size:14px;margin:0;flex:1}} .impact{{font-size:10px;font-weight:700;padding:2px 6px;border:1px solid}} .impact.positive{{color:var(--up)}} .impact.negative{{color:var(--down)}} .impact.neutral{{color:var(--muted)}}
-time{{display:block;margin:5px 0;color:var(--muted);font-size:11px}} article p{{margin:4px 0;line-height:1.62;font-size:13px}} .rationale{{color:#344054}} .source-ref{{color:var(--accent);font-size:10px;font-weight:700}} .no-news{{font-size:12px;color:var(--muted);padding:10px 0}}
+.data-table{{margin-bottom:13px}} .news{{border-top:0}} article{{padding:15px 0;border-bottom:1px solid var(--line)}} .event-line{{display:flex;align-items:flex-start;gap:9px}} h4{{font-size:14px;line-height:1.45;margin:0;flex:1}} .impact{{flex:0 0 auto;font-size:10px;font-weight:700;padding:2px 6px;border:1px solid;margin-top:1px}} .impact.positive{{color:var(--up)}} .impact.negative{{color:var(--down)}} .impact.neutral{{color:var(--muted)}}
+.news-meta{{display:flex;align-items:center;flex-wrap:wrap;gap:7px 14px;margin:6px 0 7px;padding-left:44px;color:var(--muted);font-size:11px}} time{{display:inline;margin:0}} .news-source a{{color:#175cd3;font-weight:700;text-decoration:none}} .news-source a:hover{{text-decoration:underline}} article p{{margin:4px 0;line-height:1.62;font-size:13px}} .rationale{{color:#344054}} .source-ref{{color:var(--accent);font-size:10px;font-weight:700}} .no-news{{font-size:12px;color:var(--muted);padding:12px 0;margin:0}}
 .metric-note{{border-left:3px solid var(--accent);padding:8px 12px;margin:12px 0;background:var(--soft)}} .metric-note p{{margin:4px 0;font-size:13px}} .failure{{border-left:3px solid var(--down);background:#fff5f4;padding:12px 14px;color:var(--down)}}
-.quality{{margin-top:14px;color:var(--muted);font-size:11px}} .quality summary{{cursor:pointer}} .sources{{margin-top:20px;border-top:1px solid var(--line);padding-top:12px}} .sources h3{{font-size:12px;margin:0 0 8px}} .sources ol{{padding-left:20px;margin:0}} .sources li{{margin:6px 0;font-size:10px;line-height:1.45;color:var(--muted);overflow-wrap:anywhere}} .sources a{{color:#175cd3}} .provider{{display:inline;margin-left:5px;padding:1px 4px;background:var(--soft);color:var(--muted)}}
+.quality{{margin-top:14px;color:var(--muted);font-size:11px}} .quality summary{{cursor:pointer}} .sources{{margin-top:18px;border-top:1px solid var(--line);padding-top:10px;color:var(--muted);font-size:10px}} .sources summary{{cursor:pointer;font-weight:700}} .sources ol{{padding-left:20px;margin:10px 0 0}} .sources li{{margin:6px 0;line-height:1.45;overflow-wrap:anywhere}} .sources a{{color:#175cd3}} .provider{{display:inline;margin-left:5px;padding:1px 4px;background:var(--soft);color:var(--muted)}}
 footer{{margin-top:28px;padding-top:14px;border-top:1px solid var(--ink);display:flex;justify-content:space-between;color:var(--muted);font-size:10px}}
-@media(max-width:700px){{html{{background:#fff}} main{{margin:0;padding:26px 18px;box-shadow:none}} .brand-row,.meta-strip,footer{{align-items:flex-start;flex-direction:column;gap:8px}} .edition{{text-align:left}} .brief-grid{{grid-template-columns:1fr}} .brief-item{{border-right:0;border-bottom:1px solid var(--line)}} .section-head{{align-items:flex-start}} .snapshot,.data-table{{overflow-x:auto}} table{{min-width:690px}} h1{{font-size:27px}}}}
+@media(max-width:700px){{html{{background:#fff}} main{{margin:0;padding:26px 18px;box-shadow:none}} .brand-row,.meta-strip,footer{{align-items:flex-start;flex-direction:column;gap:8px}} .edition{{text-align:left}} .brief-grid{{grid-template-columns:1fr}} .brief-item{{border-right:0;border-bottom:1px solid var(--line)}} .section-head,.instrument-head{{align-items:flex-start}} .instrument-head{{flex-direction:column;gap:4px}} .news-meta{{padding-left:0}} .snapshot,.data-table{{overflow-x:auto}} table{{min-width:690px}} h1{{font-size:27px}}}}
 @media print{{html{{background:#fff}} main{{margin:0;max-width:none;box-shadow:none;padding:0}} a{{color:inherit;text-decoration:none}} .quality{{display:none}}}}
 </style></head><body><main>
 <header class="masthead"><div class="brand-row"><div><div class="eyebrow">Daily Investment Intelligence</div><h1>金融市场日报</h1></div><div class="edition">{context.scheduled_for.strftime('%Y年%m月%d日')}<br>香港时间 {context.scheduled_for.strftime('%H:%M')}<br><span class="mode">{mode_label}</span></div></div>
@@ -246,7 +288,7 @@ def _pdf_styles() -> tuple[str, dict[str, ParagraphStyle]]:
         "title": ParagraphStyle("ChineseTitle", parent=base["Title"], fontName=font_name, fontSize=24, leading=29, textColor=colors.HexColor("#182230"), alignment=TA_LEFT, spaceAfter=9),
         "meta": ParagraphStyle("ChineseMeta", parent=base["BodyText"], fontName=font_name, fontSize=8.5, leading=13, textColor=colors.HexColor("#667085")),
         "h2": ParagraphStyle("ChineseH2", parent=base["Heading2"], fontName=font_name, fontSize=15, leading=20, textColor=colors.HexColor("#176B5B"), spaceBefore=12, spaceAfter=8),
-        "h3": ParagraphStyle("ChineseH3", parent=base["Heading3"], fontName=font_name, fontSize=11, leading=15, spaceBefore=8, spaceAfter=5, keepWithNext=True),
+        "h3": ParagraphStyle("ChineseH3", parent=base["Heading3"], fontName=font_name, fontSize=11, leading=15, spaceBefore=9, spaceAfter=6, keepWithNext=True, backColor=colors.HexColor("#F2F4F7"), borderPadding=(5, 7, 5, 7)),
         "body": ParagraphStyle("ChineseBody", parent=base["BodyText"], fontName=font_name, fontSize=9, leading=14, spaceAfter=5),
         "small": ParagraphStyle("ChineseSmall", parent=base["BodyText"], fontName=font_name, fontSize=7.5, leading=11, textColor=colors.HexColor("#667085"), spaceAfter=3),
         "positive": ParagraphStyle("Positive", parent=base["BodyText"], fontName=font_name, fontSize=8.5, leading=13, textColor=colors.HexColor("#067647"), spaceAfter=4),
@@ -336,7 +378,11 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
             if len(unavailable_items) > 3:
                 story.append(Paragraph(f"其余 {len(unavailable_items) - 3} 项缺口详见随附 JSON 审计记录。", styles["small"]))
         for instrument in result.instruments:
-            instrument_heading = Paragraph(f"{instrument.name} ({instrument.symbol})", styles["h3"])
+            instrument_heading = Paragraph(
+                f"{html.escape(instrument.name)}  |  {html.escape(instrument.symbol)}  |  "
+                f"{html.escape(instrument.exchange)} · {html.escape(instrument.currency)}",
+                styles["h3"],
+            )
             if instrument.prices:
                 data = [["类型", "价格", "涨跌", "涨跌幅", "时间", "来源"]]
                 for price in instrument.prices:
@@ -361,7 +407,10 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
             if instrument.news:
                 for item in instrument.news:
                     impact_style = styles[item.impact.value]
-                    story.append(Paragraph(f"{IMPACT_ZH[item.impact.value]}  |  {html.escape(item.headline)} [{html.escape(_source_refs(item.source_ids, source_labels))}]", impact_style))
+                    source_links = _pdf_source_links(result, item.source_ids)
+                    story.append(Paragraph(f"{IMPACT_ZH[item.impact.value]}  |  {html.escape(item.headline)}", impact_style))
+                    if source_links:
+                        story.append(Paragraph(f"来源：{source_links}", styles["small"]))
                     story.append(Paragraph(f"{html.escape(item.summary_zh)} {html.escape(item.rationale_zh)}", styles["body"]))
             else:
                 story.append(Paragraph("窗口内无重大新闻。", styles["meta"]))
@@ -369,7 +418,10 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
             story.append(Paragraph("板块与行业新闻", styles["h3"]))
             for item in result.section_news:
                 impact_style = styles[item.impact.value]
-                story.append(Paragraph(f"{IMPACT_ZH[item.impact.value]}  |  {html.escape(item.headline)} [{html.escape(_source_refs(item.source_ids, source_labels))}]", impact_style))
+                source_links = _pdf_source_links(result, item.source_ids)
+                story.append(Paragraph(f"{IMPACT_ZH[item.impact.value]}  |  {html.escape(item.headline)}", impact_style))
+                if source_links:
+                    story.append(Paragraph(f"来源：{source_links}", styles["small"]))
                 story.append(Paragraph(f"{html.escape(item.summary_zh)} {html.escape(item.rationale_zh)}", styles["body"]))
         for item in result.macro_observations:
             story.append(Paragraph(f"{item.label}：{_format_number(item.value)} {item.unit}（{item.period}）[{html.escape(_source_refs(item.source_ids, source_labels))}]", styles["body"]))
@@ -377,17 +429,6 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
             story.append(Paragraph(f"{metric.numerator}/{metric.denominator}：{html.escape(metric.interpretation_zh)} [{html.escape(_source_refs(metric.source_ids, source_labels))}]", styles["body"]))
         for warning in result.warnings[:3]:
             story.append(Paragraph(f"数据质量：{html.escape(warning.message_zh)}", styles["small"]))
-        if result.sources:
-            story.append(Paragraph("来源与时间戳", styles["h3"]))
-            for source in result.sources:
-                published = f"，发布时间 {source.published_at.isoformat()}" if source.published_at else ""
-                safe_url = html.escape(str(source.url), quote=True)
-                story.append(
-                    Paragraph(
-                        f"{html.escape(source.publisher)} [{html.escape(source.provider)}]{published} · <link href=\"{safe_url}\" color=\"#175CD3\">查看原文</link>",
-                        styles["small"],
-                    )
-                )
         story.append(Spacer(1, 4 * mm))
     doc.build(story, onFirstPage=decorate_page, onLaterPages=decorate_page)
 
