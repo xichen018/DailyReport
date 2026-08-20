@@ -74,10 +74,18 @@ class DailyReportPipeline:
             }
             _write_json(run_dir / "raw" / "providers" / module.task_id / "bundle.json", provider_data)
             prompt = self.prompt_builder.build(module, context)
-            raw = self.responses_client.create(module, prompt, provider_data)
-            _write_json(run_dir / "raw" / "openai" / f"{module.task_id}.json", raw)
-            parsed = ResearchTaskResult.model_validate(raw)
-            validated = validate_result(parsed, module, provider_data)
+            for attempt in range(1, 3):
+                raw = self.responses_client.create(module, prompt, provider_data)
+                try:
+                    parsed = ResearchTaskResult.model_validate(raw)
+                    validated = validate_result(parsed, module, provider_data)
+                    _write_json(run_dir / "raw" / "openai" / f"{module.task_id}.json", raw)
+                    break
+                except (ValidationError, ValidationFailure):
+                    _write_json(run_dir / "raw" / "openai" / f"{module.task_id}.attempt-{attempt}.json", raw)
+                    if attempt == 2:
+                        raise
+                    LOGGER.warning("task validation failed; retrying once: %s", module.task_id, exc_info=True)
         except (ValidationError, ValidationFailure, Exception) as exc:
             LOGGER.exception("task failed: %s", module.task_id)
             validated = self._failed_result(module, context, "task_pipeline", exc)

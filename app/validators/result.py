@@ -5,6 +5,8 @@ from decimal import Decimal
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from pydantic import HttpUrl
+
 from app.modules.loader import ModuleConfig
 from app.schemas.models import CheckStatus, ResearchTaskResult, TaskStatus, TaskWarning
 
@@ -100,17 +102,19 @@ def validate_result(
 
     warnings = list(result.warnings)
     market_candidates: dict[str, list[dict[str, Any]]] = {}
+    provider_news_urls: list[str] = []
     news_urls: set[str] = set()
     macro_metric_ids: set[str] = set()
     relative_metric_ids: set[str] = set()
     if provider_data is not None:
         for record in provider_data.get("market", {}).get("records", []):
             market_candidates.setdefault(record["instrument_id"], []).append(record)
-        news_urls = {
-            canonical_url(str(item["url"]))
+        provider_news_urls = [
+            str(item["url"])
             for item in provider_data.get("news", {}).get("articles", [])
             if item.get("url")
-        }
+        ]
+        news_urls = {canonical_url(url) for url in provider_news_urls}
         macro_metric_ids = {
             str(item["metric_id"])
             for item in provider_data.get("macro", {}).get("observations", [])
@@ -135,6 +139,37 @@ def validate_result(
                 ):
                     check.status = CheckStatus.NO_MATERIAL_FINDING
                     check.conclusion_zh = f"已完成必查新闻源检索；窗口内未发现相关重要新闻。{check.conclusion_zh}"
+    if provider_news_urls:
+        for source in result.sources:
+            if source.provider != "google-news-rss":
+                continue
+            current = canonical_url(str(source.url))
+            if current in news_urls:
+                continue
+            current_parts = urlsplit(current)
+            matches = []
+            for candidate in provider_news_urls:
+                candidate_parts = urlsplit(canonical_url(candidate))
+                if (
+                    current_parts.netloc == "news.google.com"
+                    and candidate_parts.netloc == current_parts.netloc
+                    and current_parts.path.startswith("/rss/articles/")
+                    and (
+                        candidate_parts.path.startswith(current_parts.path)
+                        or current_parts.path.startswith(candidate_parts.path)
+                    )
+                ):
+                    matches.append(candidate)
+            if len(matches) == 1:
+                source.url = HttpUrl(matches[0])
+                warnings.append(
+                    TaskWarning(
+                        code="NEWS_SOURCE_URL_RESTORED",
+                        message_zh=f"已恢复 Google News 来源的完整 URL：{source.publisher}",
+                        field_path=f"sources.{source.source_id}.url",
+                    )
+                )
+
     source_map = {source.source_id: source for source in result.sources}
     reported_news_urls: set[str] = set()
 
@@ -257,7 +292,16 @@ def validate_result(
         for observation in metric.observations:
             expected_ratio = (observation.numerator_value / observation.denominator_value).quantize(Decimal("0.0001"))
             if observation.ratio != expected_ratio:
-                raise ValidationFailure(f"relative ratio mismatch: {metric.metric_id}")
+                if abs(observation.ratio - expected_ratio) > Decimal("0.0001"):
+                    raise ValidationFailure(f"relative ratio mismatch: {metric.metric_id}")
+                observation.ratio = expected_ratio
+                warnings.append(
+                    TaskWarning(
+                        code="RELATIVE_RATIO_RECALCULATED",
+                        message_zh=f"已按原始数值重算并规范化相对比率：{metric.metric_id} {observation.label}",
+                        field_path=f"relative_metrics.{metric.metric_id}.{observation.label}.ratio",
+                    )
+                )
 
     referenced_source_ids: set[str] = set()
     for instrument in result.instruments:

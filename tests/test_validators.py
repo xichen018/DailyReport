@@ -143,6 +143,20 @@ class ValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationFailure, "provider news articles were not summarized"):
             validate_result(result, self.module, self.provider_data)
 
+    def test_truncated_google_news_url_is_restored_from_provider(self) -> None:
+        result = ResearchTaskResult.model_validate(self.raw)
+        source = next(item for item in result.sources if item.provider == "mock-news")
+        source.provider = "google-news-rss"
+        full_url = "https://news.google.com/rss/articles/ABCDEF123456?oc=5"
+        source.url = "https://news.google.com/rss/articles/ABCDEF?oc=5"
+        self.provider_data["news"]["articles"][0]["url"] = full_url
+
+        validated = validate_result(result, self.module, self.provider_data)
+
+        restored = next(item for item in validated.sources if item.source_id == source.source_id)
+        self.assertEqual(str(restored.url), full_url)
+        self.assertTrue(any(item.code == "NEWS_SOURCE_URL_RESTORED" for item in validated.warnings))
+
 
 if __name__ == "__main__":
     unittest.main()
