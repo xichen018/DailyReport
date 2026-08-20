@@ -35,6 +35,8 @@ class PipelineTests(unittest.TestCase):
                 self.assertIn("news_categories", call["prompt"]["module"])
                 self.assertIn("source_requirements", call["prompt"]["module"])
                 self.assertTrue(call["prompt"]["module"]["required_research_checks"])
+                self.assertIn("只能包含", call["prompt"]["common_rules"])
+                self.assertNotIn("必须检查 Marketaux", call["prompt"]["common_rules"])
             self.assertTrue((run_dir / "merged" / "report_input.json").is_file())
             self.assertTrue((run_dir / "reports" / "daily-report.html").is_file())
             self.assertTrue((run_dir / "reports" / "daily-report.pdf").is_file())

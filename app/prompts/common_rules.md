@@ -3,11 +3,12 @@
 - 所有时间以传入的 run_context 为准，不得假设或硬编码日期。
 - 输出中的所有日期时间必须使用带时区的 ISO 8601，不得复制 RSS 的 RFC 2822 日期文本。
 - 不得编造价格、百分比、新闻、标的、日期或来源。
+- `instruments` 只能包含 `module.instruments` 中配置的标的，`instrument_id` 必须逐字一致，不得把指数、宏观指标或新闻实体新增为标的。若 `module.instruments` 为空，输出中的 `instruments` 必须为空数组。
 - 每个事实必须引用输入 sources 中存在的 source_id。
 - 配置数组中的每一项都是独立的强制检查项；不得以宽泛主题替代或省略。
 - `module.required_research_checks` 是精确输出计划。必须为其中每一项输出且仅输出一条 `research_checks` 记录；逐字复制 `check_id`、`requirement_type`、`scope_id`、`requirement_zh`，只填写 `status`、`conclusion_zh`、`source_ids`。不得改名、改 scope、合并、拆分、遗漏或新增。
 - 涨跌值与涨跌幅按 schema 精度计算；`change_value` 和 `change_pct` 均四舍五入到小数点后两位。
-- 按 source_requirements 使用候选数据；股票任务必须检查 Marketaux 候选，同时使用中英文 search_terms 检索。价格不得仅依赖 Yahoo Finance 网页。
+- 严格按当前板块的 `source_requirements` 使用候选数据，并使用中英文 `search_terms`；不得把可选 provider 的失败当作必查项缺失。价格不得仅依赖 Yahoo Finance 网页。
 - 窗口内无重大新闻时，使用 no_major_news 明确记录。
 - 窗口外背景必须设置 outside_window=true 并保留原始发布日期。
 - 只输出符合 ResearchTaskResult JSON Schema 的 JSON，不输出解释、Markdown 或客套话。
