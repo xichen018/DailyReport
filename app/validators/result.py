@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -9,6 +10,7 @@ from pydantic import HttpUrl
 
 from app.modules.loader import ModuleConfig
 from app.schemas.models import CheckStatus, ResearchTaskResult, TaskStatus, TaskWarning
+from app.text.chinese import to_simplified_chinese
 
 
 class ValidationFailure(ValueError):
@@ -68,6 +70,11 @@ def normalized_headline(value: str) -> str:
     return re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", value.casefold())
 
 
+def _is_previous_close(kind: str) -> bool:
+    normalized = kind.strip().casefold().replace("-", "_").replace(" ", "_")
+    return normalized == "previous_close" or ("上一" in kind and "收盘" in kind)
+
+
 def validate_result(
     result: ResearchTaskResult,
     module: ModuleConfig,
@@ -102,6 +109,7 @@ def validate_result(
 
     warnings = list(result.warnings)
     market_candidates: dict[str, list[dict[str, Any]]] = {}
+    provider_news_articles: list[dict[str, Any]] = []
     provider_news_urls: list[str] = []
     news_urls: set[str] = set()
     macro_metric_ids: set[str] = set()
@@ -109,10 +117,14 @@ def validate_result(
     if provider_data is not None:
         for record in provider_data.get("market", {}).get("records", []):
             market_candidates.setdefault(record["instrument_id"], []).append(record)
-        provider_news_urls = [
-            str(item["url"])
+        provider_news_articles = [
+            item
             for item in provider_data.get("news", {}).get("articles", [])
             if item.get("url")
+        ]
+        provider_news_urls = [
+            str(item["url"])
+            for item in provider_news_articles
         ]
         news_urls = {canonical_url(url) for url in provider_news_urls}
         macro_metric_ids = {
@@ -147,19 +159,33 @@ def validate_result(
             if current in news_urls:
                 continue
             current_parts = urlsplit(current)
-            matches = []
-            for candidate in provider_news_urls:
-                candidate_parts = urlsplit(canonical_url(candidate))
+            metadata_matches = []
+            for article in provider_news_articles:
+                published_at = article.get("published_at")
+                article_time = None
+                if published_at:
+                    article_time = datetime.fromisoformat(str(published_at).replace("Z", "+00:00"))
                 if (
-                    current_parts.netloc == "news.google.com"
-                    and candidate_parts.netloc == current_parts.netloc
-                    and current_parts.path.startswith("/rss/articles/")
-                    and (
-                        candidate_parts.path.startswith(current_parts.path)
-                        or current_parts.path.startswith(candidate_parts.path)
-                    )
+                    source.published_at is not None
+                    and article_time == source.published_at
+                    and to_simplified_chinese(str(article.get("publisher", ""))) == source.publisher
                 ):
-                    matches.append(candidate)
+                    metadata_matches.append(str(article["url"]))
+
+            matches = metadata_matches if len(metadata_matches) == 1 else []
+            if not matches:
+                for candidate in provider_news_urls:
+                    candidate_parts = urlsplit(canonical_url(candidate))
+                    if (
+                        current_parts.netloc == "news.google.com"
+                        and candidate_parts.netloc == current_parts.netloc
+                        and current_parts.path.startswith("/rss/articles/")
+                        and (
+                            candidate_parts.path.startswith(current_parts.path)
+                            or current_parts.path.startswith(candidate_parts.path)
+                        )
+                    ):
+                        matches.append(candidate)
             if len(matches) == 1:
                 source.url = HttpUrl(matches[0])
                 warnings.append(
@@ -216,11 +242,12 @@ def validate_result(
                 candidates = market_candidates.get(instrument.instrument_id, [])
                 matched_candidate = None
                 for item in candidates:
-                    provider_value = item.get("previous_value") if price.kind == "previous_close" else item.get("value")
+                    previous_close = _is_previous_close(price.kind)
+                    provider_value = item.get("previous_value") if previous_close else item.get("value")
                     if provider_value is None or abs(price.value - Decimal(str(provider_value))) > Decimal("0.01"):
                         continue
                     if (
-                        price.kind != "previous_close"
+                        not previous_close
                         and price.previous_value is not None
                         and item.get("previous_value") is not None
                         and abs(price.previous_value - Decimal(str(item["previous_value"]))) > Decimal("0.01")
@@ -233,13 +260,15 @@ def validate_result(
 
                 authoritative_value = (
                     matched_candidate.get("previous_value")
-                    if price.kind == "previous_close"
+                    if previous_close
                     else matched_candidate.get("value")
                 )
+                if previous_close:
+                    price.kind = "previous_close"
                 normalized = price.value != Decimal(str(authoritative_value))
                 price.value = Decimal(str(authoritative_value))
                 if (
-                    price.kind != "previous_close"
+                    not previous_close
                     and price.previous_value is not None
                     and matched_candidate.get("previous_value") is not None
                 ):

@@ -88,6 +88,21 @@ class ValidatorTests(unittest.TestCase):
         validated = validate_result(result, self.module, self.provider_data)
         self.assertEqual(validated.instruments[0].prices[0].value, Decimal(str(provider_record["previous_value"])))
 
+    def test_chinese_previous_close_kind_is_normalized(self) -> None:
+        result = ResearchTaskResult.model_validate(self.raw)
+        price = result.instruments[0].prices[0]
+        provider_record = self.provider_data["market"]["records"][0]
+        price.kind = "上一交易日收盘价"
+        price.value = Decimal(str(provider_record["previous_value"])).quantize(Decimal("0.01"))
+        price.previous_value = None
+        price.change_value = None
+        price.change_pct = None
+
+        validated = validate_result(result, self.module, self.provider_data)
+
+        self.assertEqual(validated.instruments[0].prices[0].kind, "previous_close")
+        self.assertEqual(validated.instruments[0].prices[0].value, Decimal(str(provider_record["previous_value"])))
+
     def test_provider_precision_is_restored_before_change_recalculation(self) -> None:
         result = ResearchTaskResult.model_validate(self.raw)
         price = result.instruments[0].prices[0]
