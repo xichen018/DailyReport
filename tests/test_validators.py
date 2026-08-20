@@ -125,7 +125,7 @@ class ValidatorTests(unittest.TestCase):
         ]
         validated = validate_result(result, self.module, self.provider_data)
         self.assertEqual(news_check.status, CheckStatus.NO_MATERIAL_FINDING)
-        self.assertTrue(any(item.code == "NO_NEWS_IS_NOT_MISSING_DATA" for item in validated.warnings))
+        self.assertFalse(any(item.code == "NO_NEWS_IS_NOT_MISSING_DATA" for item in validated.warnings))
 
     def test_every_provider_news_article_must_be_summarized(self) -> None:
         result = ResearchTaskResult.model_validate(self.raw)

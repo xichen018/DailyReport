@@ -135,13 +135,6 @@ def validate_result(
                 ):
                     check.status = CheckStatus.NO_MATERIAL_FINDING
                     check.conclusion_zh = f"已完成必查新闻源检索；窗口内未发现相关重要新闻。{check.conclusion_zh}"
-                    warnings.append(
-                        TaskWarning(
-                            code="NO_NEWS_IS_NOT_MISSING_DATA",
-                            message_zh=f"已将无新闻候选规范为无重要发现：{check.scope_id} / {check.requirement_zh}",
-                            field_path=f"research_checks.{check.check_id}",
-                        )
-                    )
     source_map = {source.source_id: source for source in result.sources}
     reported_news_urls: set[str] = set()
 
