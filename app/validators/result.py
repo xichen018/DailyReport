@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from pydantic import HttpUrl
 
 from app.modules.loader import ModuleConfig
-from app.schemas.models import CheckStatus, PricePoint, ResearchTaskResult, TaskStatus, TaskWarning
+from app.schemas.models import CheckStatus, PricePoint, ResearchTaskResult, Source, TaskStatus, TaskWarning
 from app.text.chinese import to_simplified_chinese
 
 
@@ -90,6 +90,47 @@ def validate_result(
     if len(source_ids) != len(result.sources):
         raise ValidationFailure("duplicate source_id")
     warnings = list(result.warnings)
+
+    if provider_data is not None:
+        provider_articles = [
+            item
+            for item in provider_data.get("news", {}).get("articles", [])
+            if item.get("url") and item.get("published_at")
+        ]
+        news_items = [
+            *[news for instrument in result.instruments for news in instrument.news],
+            *result.section_news,
+        ]
+        for news in news_items:
+            missing_source_ids = set(news.source_ids) - source_ids
+            for missing_source_id in missing_source_ids:
+                matches = [
+                    article
+                    for article in provider_articles
+                    if datetime.fromisoformat(str(article["published_at"]).replace("Z", "+00:00"))
+                    == news.published_at
+                ]
+                if len(matches) != 1:
+                    continue
+                article = matches[0]
+                result.sources.append(
+                    Source(
+                        source_id=missing_source_id,
+                        provider=str(article.get("provider") or "provider"),
+                        publisher=str(article.get("publisher") or "Unknown"),
+                        url=article["url"],
+                        published_at=article["published_at"],
+                        retrieved_at=result.window.end_at,
+                    )
+                )
+                source_ids.add(missing_source_id)
+                warnings.append(
+                    TaskWarning(
+                        code="NEWS_SOURCE_METADATA_RESTORED",
+                        message_zh=f"已按唯一发布时间匹配恢复新闻来源：{news.headline}",
+                        field_path=f"sources.{missing_source_id}",
+                    )
+                )
 
     actual_checks = {
         (item.requirement_type, item.scope_id, item.requirement_zh)

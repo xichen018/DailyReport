@@ -128,6 +128,21 @@ class ValidatorTests(unittest.TestCase):
         self.assertNotIn("unknown_source", validated.research_checks[0].source_ids)
         self.assertTrue(any(item.code == "UNKNOWN_CHECK_SOURCE_REMOVED" for item in validated.warnings))
 
+    def test_missing_news_source_metadata_is_restored_by_unique_timestamp(self) -> None:
+        result = ResearchTaskResult.model_validate(self.raw)
+        news = result.instruments[0].news[0]
+        original_source_id = news.source_ids[0]
+        result.sources = [source for source in result.sources if source.source_id != original_source_id]
+        self.provider_data["news"]["articles"][0]["published_at"] = news.published_at.isoformat()
+        for offset, article in enumerate(self.provider_data["news"]["articles"][1:], start=1):
+            article["published_at"] = (news.published_at - timedelta(hours=offset)).isoformat()
+
+        validated = validate_result(result, self.module, self.provider_data)
+
+        restored = next(source for source in validated.sources if source.source_id == original_source_id)
+        self.assertEqual(restored.published_at, news.published_at)
+        self.assertTrue(any(item.code == "NEWS_SOURCE_METADATA_RESTORED" for item in validated.warnings))
+
     def test_provider_precision_is_restored_before_change_recalculation(self) -> None:
         result = ResearchTaskResult.model_validate(self.raw)
         price = result.instruments[0].prices[0]
