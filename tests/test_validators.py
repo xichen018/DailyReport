@@ -119,6 +119,15 @@ class ValidatorTests(unittest.TestCase):
         self.assertEqual(previous.as_of.isoformat(), "2026-08-17T08:00:00+00:00")
         self.assertTrue(any(item.code == "PREVIOUS_CLOSE_ADDED_FROM_PROVIDER" for item in validated.warnings))
 
+    def test_unknown_research_check_source_is_removed_with_warning(self) -> None:
+        result = ResearchTaskResult.model_validate(self.raw)
+        result.research_checks[0].source_ids.append("unknown_source")
+
+        validated = validate_result(result, self.module, self.provider_data)
+
+        self.assertNotIn("unknown_source", validated.research_checks[0].source_ids)
+        self.assertTrue(any(item.code == "UNKNOWN_CHECK_SOURCE_REMOVED" for item in validated.warnings))
+
     def test_provider_precision_is_restored_before_change_recalculation(self) -> None:
         result = ResearchTaskResult.model_validate(self.raw)
         price = result.instruments[0].prices[0]

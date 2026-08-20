@@ -89,6 +89,7 @@ def validate_result(
     source_ids = {source.source_id for source in result.sources}
     if len(source_ids) != len(result.sources):
         raise ValidationFailure("duplicate source_id")
+    warnings = list(result.warnings)
 
     actual_checks = {
         (item.requirement_type, item.scope_id, item.requirement_zh)
@@ -106,11 +107,15 @@ def validate_result(
     for check in result.research_checks:
         unknown_source_ids = set(check.source_ids) - source_ids
         if unknown_source_ids:
-            raise ValidationFailure(
-                f"research check {check.check_id} has unknown source ids: {sorted(unknown_source_ids)}"
+            check.source_ids = [source_id for source_id in check.source_ids if source_id in source_ids]
+            warnings.append(
+                TaskWarning(
+                    code="UNKNOWN_CHECK_SOURCE_REMOVED",
+                    message_zh=f"已移除研究检查中的无效来源引用：{check.check_id} {sorted(unknown_source_ids)}",
+                    field_path=f"research_checks.{check.check_id}.source_ids",
+                )
             )
 
-    warnings = list(result.warnings)
     market_candidates: dict[str, list[dict[str, Any]]] = {}
     provider_news_articles: list[dict[str, Any]] = []
     provider_news_urls: list[str] = []
