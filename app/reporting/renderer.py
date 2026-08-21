@@ -209,7 +209,7 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
             section_news_group = len(result.instruments) + 1
             body.append(
                 f"<div class='instrument-head'><div><span class='instrument-index'>{section_number}.{section_news_group}</span>"
-                "<h3>板块与行业新闻</h3></div><span>全部窗口内候选</span></div><div class='news'>"
+                "<h3>板块与行业新闻</h3></div><span>重大动态</span></div><div class='news'>"
             )
             for news_number, item in enumerate(result.section_news, start=1):
                 source_links = _html_source_links(result, item.source_ids)
