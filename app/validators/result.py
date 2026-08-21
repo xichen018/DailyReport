@@ -290,8 +290,18 @@ def validate_result(
             if provider_data is not None:
                 candidates = market_candidates.get(instrument.instrument_id, [])
                 matched_candidate = None
+                matched_as_previous = False
                 for item in candidates:
                     previous_close = _is_previous_close(price.kind)
+                    if (
+                        not previous_close
+                        and price.previous_value is None
+                        and item.get("previous_value") is not None
+                        and item.get("previous_as_of") is not None
+                        and abs(price.value - Decimal(str(item["previous_value"]))) <= Decimal("0.01")
+                        and price.as_of == datetime.fromisoformat(str(item["previous_as_of"]).replace("Z", "+00:00"))
+                    ):
+                        previous_close = True
                     provider_value = item.get("previous_value") if previous_close else item.get("value")
                     if provider_value is None or abs(price.value - Decimal(str(provider_value))) > Decimal("0.01"):
                         continue
@@ -303,10 +313,12 @@ def validate_result(
                     ):
                         continue
                     matched_candidate = item
+                    matched_as_previous = previous_close
                     break
                 if matched_candidate is None:
                     raise ValidationFailure(f"price not found in provider data: {instrument.symbol}")
 
+                previous_close = matched_as_previous
                 authoritative_value = (
                     matched_candidate.get("previous_value")
                     if previous_close

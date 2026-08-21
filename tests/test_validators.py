@@ -103,6 +103,23 @@ class ValidatorTests(unittest.TestCase):
         self.assertEqual(validated.instruments[0].prices[0].kind, "previous_close")
         self.assertEqual(validated.instruments[0].prices[0].value, Decimal(str(provider_record["previous_value"])))
 
+    def test_mislabeled_previous_close_is_identified_by_value_and_timestamp(self) -> None:
+        result = ResearchTaskResult.model_validate(self.raw)
+        price = result.instruments[0].prices[0]
+        provider_record = self.provider_data["market"]["records"][0]
+        provider_record["previous_as_of"] = "2026-08-17T08:00:00+00:00"
+        price.kind = "close"
+        price.value = Decimal(str(provider_record["previous_value"])).quantize(Decimal("0.01"))
+        price.as_of = datetime.fromisoformat(provider_record["previous_as_of"])
+        price.previous_value = None
+        price.change_value = None
+        price.change_pct = None
+
+        validated = validate_result(result, self.module, self.provider_data)
+
+        self.assertEqual(validated.instruments[0].prices[0].kind, "previous_close")
+        self.assertEqual(validated.instruments[0].prices[0].value, Decimal(str(provider_record["previous_value"])))
+
     def test_missing_previous_close_is_added_from_yahoo_provider(self) -> None:
         result = ResearchTaskResult.model_validate(self.raw)
         result.instruments[0].prices = result.instruments[0].prices[:1]
