@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -97,6 +97,25 @@ class RealIntegrationContractTests(unittest.TestCase):
             record = FreeMarketDataProvider()._yahoo("alphabet_c", "GOOG", "USD")[0]
         self.assertEqual(record["previous_value"], "100.0")
         self.assertNotEqual(record["previous_as_of"], record["as_of"])
+
+    def test_yahoo_excludes_unfinished_daily_bar(self) -> None:
+        timestamps = [
+            int(datetime(2026, 8, day, 13, 30, tzinfo=timezone.utc).timestamp())
+            for day in (19, 20, 21)
+        ]
+        payload = json.dumps({
+            "chart": {"result": [{
+                "timestamp": timestamps,
+                "indicators": {"quote": [{"close": [100.0, 102.0, 99.0]}]},
+            }]}
+        }).encode()
+        with patch("app.providers.http._get", return_value=payload):
+            record = FreeMarketDataProvider()._yahoo(
+                "alphabet_c", "GOOG", "USD", datetime(2026, 8, 20).date(), ZoneInfo("America/New_York")
+            )[0]
+        self.assertEqual(record["value"], "102.0")
+        self.assertEqual(record["previous_value"], "100.0")
+        self.assertEqual(record["session_date"], "2026-08-20")
 
     def test_google_news_uses_separate_chinese_and_english_locales(self) -> None:
         module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "cybersecurity")

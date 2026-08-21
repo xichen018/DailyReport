@@ -117,6 +117,20 @@ def _price_kind_label(kind: str) -> str:
     return kind
 
 
+def _display_prices(prices: list[object]) -> list[object]:
+    return [price for price in prices if not _price_kind_label(price.kind) == PRICE_KIND_ZH["previous_close"]]
+
+
+def _previous_close(price: object, prices: list[object]) -> object | None:
+    if price.previous_value is not None:
+        return price.previous_value
+    previous = next(
+        (item for item in prices if _price_kind_label(item.kind) == PRICE_KIND_ZH["previous_close"]),
+        None,
+    )
+    return previous.value if previous is not None else None
+
+
 def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mode: str) -> str:
     result_list = list(results)
     delivered = sum(item.status != TaskStatus.FAILED for item in result_list)
@@ -129,7 +143,7 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
         if not instrument.prices:
             snapshot_rows.append(
                 "<tr>"
-                f"<td><strong>{html.escape(instrument.symbol)}</strong><span>{html.escape(instrument.name)}</span></td>"
+                f"<td><strong>{html.escape(instrument.symbol)}</strong> · {html.escape(instrument.name)}</td>"
                 "<td class='numeric flat'>数据受限</td><td class='numeric flat'>-</td>"
                 f"<td>{html.escape(instrument.trading_date.isoformat() if instrument.trading_date else '-')}</td>"
                 "<td class='source-ref'>-</td></tr>"
@@ -141,7 +155,7 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
         direction = _change_class(price.change_pct)
         snapshot_rows.append(
             "<tr>"
-            f"<td><strong>{html.escape(instrument.symbol)}</strong><span>{html.escape(instrument.name)}</span></td>"
+            f"<td><strong>{html.escape(instrument.symbol)}</strong> · {html.escape(instrument.name)}</td>"
             f"<td class='numeric'>{_format_number(price.value)} <small>{html.escape(price.currency)}</small></td>"
             f"<td class='numeric {direction}'>{_format_percent(price.change_pct)}</td>"
             f"<td>{html.escape(instrument.trading_date.isoformat() if instrument.trading_date else price.as_of.date().isoformat())}</td>"
@@ -180,15 +194,20 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
                 f"{html.escape(instrument.exchange)} · {html.escape(instrument.currency)}</span></div>"
             )
             if instrument.prices:
+                display_prices = _display_prices(instrument.prices)
+                show_kind = len(display_prices) > 1
                 rows = "".join(
                     "<tr>"
-                    f"<td>{html.escape(_price_kind_label(price.kind))}</td><td class='numeric'>{_format_number(price.value)} {html.escape(price.currency)}</td>"
+                    + (f"<td>{html.escape(_price_kind_label(price.kind))}</td>" if show_kind else "")
+                    + f"<td class='numeric'>{_format_number(price.value)} {html.escape(price.currency)}</td>"
+                    f"<td class='numeric'>{_format_number(_previous_close(price, instrument.prices))}</td>"
                     f"<td class='numeric {_change_class(price.change_value)}'>{_format_number(price.change_value)}</td>"
                     f"<td class='numeric {_change_class(price.change_pct)}'>{_format_percent(price.change_pct)}</td>"
-                    f"<td>{html.escape(price.as_of.strftime('%Y-%m-%d %H:%M'))}</td><td class='source-ref'>{html.escape(_source_refs(price.source_ids, source_labels))}</td></tr>"
-                    for price in instrument.prices
+                    f"<td>{html.escape(str(instrument.trading_date or price.as_of.date()))}</td><td class='source-ref'>{html.escape(_source_refs(price.source_ids, source_labels))}</td></tr>"
+                    for price in display_prices
                 )
-                body.append("<table class='data-table'><thead><tr><th>口径</th><th>价格</th><th>涨跌</th><th>涨跌幅</th><th>截至</th><th>来源</th></tr></thead><tbody>" + rows + "</tbody></table>")
+                kind_header = "<th>口径</th>" if show_kind else ""
+                body.append("<table class='data-table'><thead><tr>" + kind_header + "<th>最新收盘</th><th>上一收盘</th><th>涨跌</th><th>涨跌幅</th><th>交易日</th><th>来源</th></tr></thead><tbody>" + rows + "</tbody></table>")
             if instrument.news:
                 body.append("<div class='news'>")
                 for news_number, item in enumerate(instrument.news, start=1):
@@ -366,7 +385,7 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
     story.extend([brief, Spacer(1, 5 * mm), Paragraph("市场快照", styles["h3"])])
     snapshot = [["标的", "价格", "涨跌幅", "交易日", "来源"]]
     for instrument in instruments:
-        identity = Paragraph(f"{html.escape(instrument.name)}<br/><b>{html.escape(instrument.symbol)}</b>", styles["small"])
+        identity = Paragraph(f"<b>{html.escape(instrument.symbol)}</b> · {html.escape(instrument.name)}", styles["small"])
         if not instrument.prices:
             snapshot.append([identity, "数据受限", "-", str(instrument.trading_date or "-"), "-"])
             continue
@@ -413,17 +432,21 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
                 styles["h3"],
             )
             if instrument.prices:
-                data = [["类型", "价格", "涨跌", "涨跌幅", "时间", "来源"]]
-                for price in instrument.prices:
+                display_prices = _display_prices(instrument.prices)
+                show_kind = len(display_prices) > 1
+                data = [[*(["口径"] if show_kind else []), "最新收盘", "上一收盘", "涨跌", "涨跌幅", "交易日", "来源"]]
+                for price in display_prices:
                     data.append([
-                        Paragraph(html.escape(_price_kind_label(price.kind)), styles["small"]),
+                        *([Paragraph(html.escape(_price_kind_label(price.kind)), styles["small"])] if show_kind else []),
                         f"{_format_number(price.value)} {price.currency}",
+                        _format_number(_previous_close(price, instrument.prices)),
                         _format_number(price.change_value),
                         _format_percent(price.change_pct),
-                        price.as_of.strftime("%Y-%m-%d %H:%M"),
+                        str(instrument.trading_date or price.as_of.date()),
                         Paragraph(html.escape(_source_refs(price.source_ids, source_labels)), styles["small"]),
                     ])
-                table = Table(data, colWidths=[22 * mm, 30 * mm, 19 * mm, 19 * mm, 37 * mm, 32 * mm], repeatRows=1)
+                col_widths = ([18 * mm] if show_kind else []) + [31 * mm, 28 * mm, 20 * mm, 20 * mm, 30 * mm, 30 * mm]
+                table = Table(data, colWidths=col_widths, repeatRows=1)
                 table.setStyle(TableStyle([
                     ("FONTNAME", (0, 0), (-1, -1), font_name), ("FONTSIZE", (0, 0), (-1, -1), 7.5),
                     ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E6F4F1")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#0F4F49")),

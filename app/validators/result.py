@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -314,6 +314,8 @@ def validate_result(
                 )
                 if previous_close:
                     price.kind = "previous_close"
+                elif matched_candidate.get("session_date"):
+                    instrument.trading_date = date.fromisoformat(str(matched_candidate["session_date"]))
                 normalized = price.value != Decimal(str(authoritative_value))
                 price.value = Decimal(str(authoritative_value))
                 if (

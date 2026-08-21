@@ -6,7 +6,7 @@ import json
 import re
 import urllib.parse
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -15,7 +15,7 @@ import httpx
 
 from app.modules.loader import ModuleConfig
 from app.providers.base import ProviderBundle
-from app.providers.calendar import SimpleTradingCalendar
+from app.providers.calendar import MARKET_RULES, SimpleTradingCalendar
 
 
 USER_AGENT = "DailyReport/0.2 (+financial-research; contact=operator)"
@@ -56,8 +56,9 @@ def _iso_published_at(value: str | None) -> str | None:
 class FreeMarketDataProvider:
     name = "free-market-multiprovider"
 
-    def __init__(self, timeout: float = 25.0) -> None:
+    def __init__(self, timeout: float = 25.0, calendar: SimpleTradingCalendar | None = None) -> None:
         self.timeout = timeout
+        self.calendar = calendar or SimpleTradingCalendar()
 
     def _binance(self) -> list[dict[str, Any]]:
         urls = [f"https://api{suffix}.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT" for suffix in ("", "1", "2", "3")]
@@ -102,7 +103,14 @@ class FreeMarketDataProvider:
             "source_url": url, "provider": "coingecko",
         }]
 
-    def _yahoo(self, instrument_id: str, symbol: str, currency: str) -> list[dict[str, Any]]:
+    def _yahoo(
+        self,
+        instrument_id: str,
+        symbol: str,
+        currency: str,
+        closed_session: date | None = None,
+        market_timezone: ZoneInfo | None = None,
+    ) -> list[dict[str, Any]]:
         remote = YAHOO_SYMBOLS.get(symbol, symbol)
         encoded = urllib.parse.quote(remote, safe="")
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range=5d&interval=1d&events=history"
@@ -110,14 +118,23 @@ class FreeMarketDataProvider:
         timestamps = result["timestamp"]
         closes = result["indicators"]["quote"][0]["close"]
         valid = [(ts, value) for ts, value in zip(timestamps, closes) if value is not None]
+        if closed_session is not None and market_timezone is not None:
+            valid = [
+                (ts, value)
+                for ts, value in valid
+                if datetime.fromtimestamp(ts, timezone.utc).astimezone(market_timezone).date() <= closed_session
+            ]
         if len(valid) < 2:
             raise ValueError(f"insufficient Yahoo closes for {symbol}")
         previous, current = valid[-2], valid[-1]
+        current_at = datetime.fromtimestamp(current[0], timezone.utc)
+        previous_at = datetime.fromtimestamp(previous[0], timezone.utc)
+        session_timezone = market_timezone or timezone.utc
         return [{
             "instrument_id": instrument_id, "symbol": symbol, "kind": "close",
             "value": str(current[1]), "previous_value": str(previous[1]), "currency": currency,
-            "as_of": datetime.fromtimestamp(current[0], timezone.utc).isoformat(),
-            "previous_as_of": datetime.fromtimestamp(previous[0], timezone.utc).isoformat(),
+            "as_of": current_at.isoformat(), "session_date": current_at.astimezone(session_timezone).date().isoformat(),
+            "previous_as_of": previous_at.isoformat(), "previous_session_date": previous_at.astimezone(session_timezone).date().isoformat(),
             "source_url": url, "provider": "yahoo-chart",
         }]
 
@@ -170,7 +187,16 @@ class FreeMarketDataProvider:
                 except Exception as exc:
                     errors.append(_error("coingecko", exc))
             try:
-                records.extend(self._yahoo(instrument.instrument_id, instrument.symbol, instrument.currency))
+                calendar_name = "HKEX" if instrument.exchange == "HKEX" else "NYMEX" if instrument.exchange == "NYMEX" else "US"
+                closed_session = None if instrument.asset_class == "crypto" else self.calendar.latest_closed_session(calendar_name, as_of)
+                market_timezone = None if instrument.asset_class == "crypto" else MARKET_RULES[calendar_name][0]
+                records.extend(self._yahoo(
+                    instrument.instrument_id,
+                    instrument.symbol,
+                    instrument.currency,
+                    closed_session,
+                    market_timezone,
+                ))
             except Exception as exc:
                 errors.append(_error("yahoo-chart", exc))
             if instrument.exchange == "HKEX":
@@ -381,9 +407,10 @@ class FredMacroDataProvider:
 
 
 def build_free_provider_bundle(marketaux_token: str | None, timeout: float = 25.0) -> ProviderBundle:
+    calendar = SimpleTradingCalendar()
     return ProviderBundle(
-        market=FreeMarketDataProvider(timeout),
+        market=FreeMarketDataProvider(timeout, calendar),
         news=FreeNewsProvider(marketaux_token, timeout),
         macro=FredMacroDataProvider(timeout),
-        calendar=SimpleTradingCalendar(),
+        calendar=calendar,
     )
