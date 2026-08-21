@@ -41,7 +41,8 @@ class PipelineTests(unittest.TestCase):
                 if call["task_id"] in {"hk_equities", "us_semis_optics", "us_platform_media", "cybersecurity"}:
                     self.assertIn("未来 2-8 周", call["prompt"]["module_instructions"])
                     self.assertIn("催化与失效", call["prompt"]["module_instructions"])
-                    self.assertIn("转为偏多", call["prompt"]["module_instructions"])
+                    self.assertIn("转多条件", call["prompt"]["module_instructions"])
+                    self.assertIn("转空条件", call["prompt"]["module_instructions"])
                 self.assertNotIn("必须检查 Marketaux", call["prompt"]["common_rules"])
             self.assertTrue((run_dir / "merged" / "report_input.json").is_file())
             self.assertTrue((run_dir / "reports" / "daily-report.html").is_file())
