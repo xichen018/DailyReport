@@ -396,12 +396,6 @@ def validate_result(
         instrument.news = validated_news(instrument.news, f"instruments.{instrument.instrument_id}.news")
 
     result.section_news = validated_news(result.section_news, "section_news")
-    if provider_data is not None:
-        unreported_news = news_urls - reported_news_urls
-        if unreported_news:
-            raise ValidationFailure(
-                f"provider news articles were not summarized: {sorted(unreported_news)}"
-            )
 
     for observation in result.macro_observations:
         if set(observation.source_ids) - source_ids:

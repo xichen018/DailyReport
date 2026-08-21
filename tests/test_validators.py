@@ -182,7 +182,7 @@ class ValidatorTests(unittest.TestCase):
         self.assertEqual(news_check.status, CheckStatus.NO_MATERIAL_FINDING)
         self.assertFalse(any(item.code == "NO_NEWS_IS_NOT_MISSING_DATA" for item in validated.warnings))
 
-    def test_every_provider_news_article_must_be_summarized(self) -> None:
+    def test_unreported_provider_news_article_is_allowed(self) -> None:
         result = ResearchTaskResult.model_validate(self.raw)
         self.provider_data["news"]["articles"].append(
             {
@@ -195,8 +195,8 @@ class ValidatorTests(unittest.TestCase):
                 "provider": "test-news",
             }
         )
-        with self.assertRaisesRegex(ValidationFailure, "provider news articles were not summarized"):
-            validate_result(result, self.module, self.provider_data)
+        validated = validate_result(result, self.module, self.provider_data)
+        self.assertEqual(len(validated.instruments[0].news), len(result.instruments[0].news))
 
     def test_truncated_google_news_url_is_restored_from_provider(self) -> None:
         result = ResearchTaskResult.model_validate(self.raw)

@@ -89,7 +89,7 @@ class DailyReportPipeline:
                         **prompt,
                         "validation_feedback": (
                             f"上一次独立请求未通过程序校验：{exc}。本次必须重新生成完整结果并修正该问题；"
-                            "逐一核对 provider_data 中的每条候选记录及其 URL，不得只返回补丁。"
+                            "逐一核对输出中实际使用的 provider_data 候选记录及其 URL，不得只返回补丁。"
                         ),
                     }
                     LOGGER.warning("task validation failed; retrying once: %s", module.task_id, exc_info=True)
