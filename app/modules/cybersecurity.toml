@@ -1,10 +1,10 @@
 task_id = "cybersecurity"
 title_zh = "网络安全"
 template = "equities.md"
-price_checks = ["最近美国交易日收盘价与涨跌幅", "上一美国交易日收盘价", "盘前或盘后价格与涨跌幅"]
+price_checks = ["最近美国交易日收盘价与涨跌幅", "上一美国交易日收盘价"]
 news_categories = ["财报/业绩指引", "下次财报日期", "分析师评级或目标价变动", "产品与技术发布", "大额订单/合作", "管理层变动", "监管法律动态"]
 industry_topics = ["重大网络安全事件", "PANW动态", "SentinelOne（S）动态", "Zscaler（ZS）动态", "网络安全行业并购"]
-triggered_checks = ["盘前或盘后涨跌幅绝对值超过1%时查明并报告原因", "判断下次财报日期是否临近"]
+triggered_checks = ["输入提供盘前或盘后行情且涨跌幅绝对值超过1%时，查明并报告原因", "判断下次财报日期是否临近"]
 source_requirements = ["Google News RSS 对 CRWD 为必查；GDELT 与 Marketaux 仅作可选增强", "中英文关键词检索", "股票价格以 Yahoo Chart API 为可接受主来源；独立第二行情源仅作增强，失败时仍须输出 Yahoo 价格并注明来源", "每条事实记录媒体名或机构名及 URL"]
 search_terms_zh = ["CrowdStrike 财报 评级 目标价", "Falcon Charlotte AI", "网络安全 重大事件 并购"]
 search_terms_en = ["CrowdStrike CRWD news earnings analyst target", "Falcon Charlotte AI", "cybersecurity incident PANW S ZS M&A"]

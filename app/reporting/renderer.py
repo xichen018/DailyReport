@@ -419,11 +419,6 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
             unavailable = sum(item.status.value == "data_unavailable" for item in result.research_checks)
             covered = len(result.research_checks) - unavailable
             story.append(Paragraph(f"已核查：{covered}/{len(result.research_checks)}；数据受限：{unavailable} 项", styles["meta"]))
-            unavailable_items = [item for item in result.research_checks if item.status.value == "data_unavailable"]
-            for item in unavailable_items[:3]:
-                story.append(Paragraph(f"数据缺口：{html.escape(item.requirement_zh)} - {html.escape(item.conclusion_zh)}", styles["small"]))
-            if len(unavailable_items) > 3:
-                story.append(Paragraph(f"其余 {len(unavailable_items) - 3} 项缺口详见随附 JSON 审计记录。", styles["small"]))
         for instrument_number, instrument in enumerate(result.instruments, start=1):
             instrument_heading = Paragraph(
                 f"{section_number}.{instrument_number}  |  {html.escape(instrument.name)}  |  {html.escape(instrument.symbol)}  |  "
@@ -480,8 +475,6 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
             story.append(Paragraph(f"{item.label}：{_format_number(item.value)} {item.unit}（{item.period}）[{html.escape(_source_refs(item.source_ids, source_labels))}]", styles["body"]))
         for metric in result.relative_metrics:
             story.append(Paragraph(f"{metric.numerator}/{metric.denominator}：{html.escape(metric.interpretation_zh)} [{html.escape(_source_refs(metric.source_ids, source_labels))}]", styles["body"]))
-        for warning in result.warnings[:3]:
-            story.append(Paragraph(f"数据质量：{html.escape(warning.message_zh)}", styles["small"]))
         story.append(Spacer(1, 4 * mm))
     doc.build(story, onFirstPage=decorate_page, onLaterPages=decorate_page)
 
