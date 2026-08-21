@@ -165,6 +165,8 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual([item["label"] for item in observations], ["current", "one_month_ago", "three_months_ago", "year_start"])
         self.assertTrue(all("ratio" in item for item in observations))
         self.assertEqual(observations[0]["ratio"], "0.2500")
+        self.assertEqual(observations[-1]["as_of"], "2026-01-02")
+        self.assertEqual(observations[-1]["numerator_value"], "5000")
 
     def test_marketaux_token_is_not_returned_in_provider_bundle(self) -> None:
         module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "cybersecurity")

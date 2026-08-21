@@ -400,8 +400,22 @@ class FredMacroDataProvider:
             ]
             ratio_observations = []
             for label, target in labels:
-                sox = self._nearest(histories["^SOX"], target)
-                ndx = self._nearest(histories["^NDX"], target)
+                if label == "current":
+                    sox = histories["^SOX"][-1]
+                    ndx = histories["^NDX"][-1]
+                elif label == "year_start":
+                    first_session = date(end_at.year, 1, 1)
+                    sox = next(
+                        item for item in histories["^SOX"]
+                        if datetime.fromtimestamp(item[0], timezone.utc).date() >= first_session
+                    )
+                    ndx = next(
+                        item for item in histories["^NDX"]
+                        if datetime.fromtimestamp(item[0], timezone.utc).date() >= first_session
+                    )
+                else:
+                    sox = self._nearest(histories["^SOX"], target)
+                    ndx = self._nearest(histories["^NDX"], target)
                 ratio_observations.append({
                     "label": label,
                     "as_of": datetime.fromtimestamp(sox[0], timezone.utc).date().isoformat(),
