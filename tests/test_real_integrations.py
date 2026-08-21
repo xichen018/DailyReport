@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from app.integrations.secrets import load_secrets
 from app.integrations.openai_responses import _gateway_compatible_strict_schema
 from app.modules.loader import load_module_configs
-from app.providers.http import FreeMarketDataProvider, FreeNewsProvider, _iso_published_at
+from app.providers.http import FredMacroDataProvider, FreeMarketDataProvider, FreeNewsProvider, _iso_published_at
 from app.settings import Settings
 from app.schemas.models import InstrumentResult
 
@@ -138,6 +138,33 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual({item["language"] for item in google_queries}, {"zh", "en"})
         self.assertTrue(any("hl=en-US" in url and "ceid=US%3Aen" in url for url in requested_urls))
         self.assertTrue(any("hl=zh-CN" in url and "ceid=HK%3Azh-Hans" in url for url in requested_urls))
+
+    def test_macro_ratio_is_calculated_by_provider_for_all_periods(self) -> None:
+        module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "macro_market")
+        end_at = datetime(2026, 8, 18, tzinfo=ZoneInfo("Asia/Hong_Kong"))
+        timestamps = [
+            int(datetime(2026, month, day, tzinfo=timezone.utc).timestamp())
+            for month, day in ((1, 2), (5, 20), (7, 20), (8, 17), (8, 18))
+        ]
+
+        def fake_history(symbol: str):
+            values = {
+                "^IXIC": [20000, 21000, 22000, 23000, 23100],
+                "^SOX": [5000, 5400, 5800, 6000, 6060],
+                "^NDX": [21000, 22000, 23000, 24000, 24240],
+            }[symbol]
+            return list(zip(timestamps, values)), f"https://example.test/{symbol}"
+
+        csv_payload = b"observation_date,VIXCLS,CPIAUCSL,DFF\n2026-08-17,15.0,300.0,4.0\n"
+        with patch("app.providers.http._get", return_value=csv_payload), patch.object(
+            FredMacroDataProvider, "_index_history", side_effect=fake_history
+        ):
+            result = FredMacroDataProvider().get_task_data(module, end_at.replace(day=17), end_at)
+
+        observations = result["relative_metrics"][0]["observations"]
+        self.assertEqual([item["label"] for item in observations], ["current", "one_month_ago", "three_months_ago", "year_start"])
+        self.assertTrue(all("ratio" in item for item in observations))
+        self.assertEqual(observations[0]["ratio"], "0.2500")
 
     def test_marketaux_token_is_not_returned_in_provider_bundle(self) -> None:
         module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "cybersecurity")

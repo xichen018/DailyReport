@@ -24,10 +24,15 @@ class PromptBuilder:
                 "news_categories": list(module.news_categories),
                 "industry_topics": list(module.industry_topics),
                 "triggered_checks": list(module.triggered_checks),
+                "data_checks": list(module.data_checks),
                 "source_requirements": list(module.source_requirements),
                 "search_terms": {
                     "zh": list(module.search_terms_zh),
                     "en": list(module.search_terms_en),
+                },
+                "background_search_terms": {
+                    "zh": list(module.background_search_terms_zh),
+                    "en": list(module.background_search_terms_en),
                 },
                 "no_news_policy": module.no_news_policy,
                 "background_policy": module.background_policy,

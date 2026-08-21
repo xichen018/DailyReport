@@ -7,6 +7,7 @@ import re
 import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from email.utils import parsedate_to_datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -283,11 +284,14 @@ class FreeNewsProvider:
                 queries.append({"provider": "gdelt", "scope": module.task_id, "status": "failed", "returned": 0})
 
         search_queries = [
-            *((query_text, "zh") for query_text in module.search_terms_zh),
-            *((query_text, "en") for query_text in module.search_terms_en),
+            *((query_text, "zh", False) for query_text in module.search_terms_zh),
+            *((query_text, "en", False) for query_text in module.search_terms_en),
+            *((query_text, "zh", True) for query_text in module.background_search_terms_zh),
+            *((query_text, "en", True) for query_text in module.background_search_terms_en),
         ]
-        for query_text, language in search_queries:
-            windowed_query = f"({query_text}) when:2d"
+        for query_text, language, background_candidate in search_queries:
+            lookback_days = 14 if background_candidate else 2
+            windowed_query = f"({query_text}) when:{lookback_days}d"
             locale = (
                 {"hl": "en-US", "gl": "US", "ceid": "US:en"}
                 if language == "en"
@@ -297,23 +301,31 @@ class FreeNewsProvider:
             try:
                 root = ET.fromstring(_get(url, self.timeout))
                 returned = root.findall("./channel/item")[:15]
-                queries.append({"provider": "google-news-rss", "query": query_text, "language": language, "status": "success", "returned": len(returned)})
+                queries.append({
+                    "provider": "google-news-rss", "query": query_text, "language": language,
+                    "background": background_candidate, "status": "success", "returned": len(returned),
+                })
                 for item in returned:
                     articles.append({
                         "instrument_id": None, "headline": item.findtext("title"), "description": item.findtext("description"),
                         "published_at": _iso_published_at(item.findtext("pubDate")), "publisher": item.findtext("source") or "Google News",
-                        "url": item.findtext("link"), "provider": "google-news-rss", "query": query_text, "language": language,
+                        "url": item.findtext("link"), "provider": "google-news-rss", "query": query_text,
+                        "language": language, "background_candidate": background_candidate,
                     })
             except Exception as exc:
                 errors.append(_error("google-news-rss", exc))
-                queries.append({"provider": "google-news-rss", "query": query_text, "language": language, "status": "failed", "returned": 0})
+                queries.append({
+                    "provider": "google-news-rss", "query": query_text, "language": language,
+                    "background": background_candidate, "status": "failed", "returned": 0,
+                })
         window_articles = []
         for article in articles:
             published_at = article.get("published_at")
             if not published_at:
                 continue
             published = datetime.fromisoformat(str(published_at).replace("Z", "+00:00"))
-            if start_at <= published.astimezone(start_at.tzinfo) <= end_at:
+            article_start = end_at - timedelta(days=14) if article.get("background_candidate") else start_at
+            if article_start <= published.astimezone(start_at.tzinfo) <= end_at:
                 window_articles.append(article)
         return {
             "provider": self.name,
@@ -395,6 +407,7 @@ class FredMacroDataProvider:
                     "as_of": datetime.fromtimestamp(sox[0], timezone.utc).date().isoformat(),
                     "numerator_value": str(sox[1]),
                     "denominator_value": str(ndx[1]),
+                    "ratio": str((Decimal(str(sox[1])) / Decimal(str(ndx[1]))).quantize(Decimal("0.0001"))),
                 })
             relative_metrics.append({
                 "metric_id": "sox_ndx_ratio", "numerator": "SOX", "denominator": "NDX",

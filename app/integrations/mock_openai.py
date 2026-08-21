@@ -191,6 +191,8 @@ class MockResponsesClient:
 
         for requirement in module.price_checks:
             add_check("price", module.task_id, requirement, "completed", "已用模拟行情数据完成该项核对。")
+        for requirement in module.data_checks:
+            add_check("data", module.task_id, requirement, "completed", "已用模拟宏观数据完成该项核对。")
         news_scopes = [item.instrument_id for item in module.instruments] or [module.task_id]
         for scope_id in news_scopes:
             has_news = bool(news_by_instrument.get(scope_id)) if module.instruments else bool(macro_observations)

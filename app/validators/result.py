@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from pydantic import HttpUrl
 
 from app.modules.loader import ModuleConfig
-from app.schemas.models import CheckStatus, PricePoint, ResearchTaskResult, Source, TaskStatus, TaskWarning
+from app.schemas.models import CheckStatus, PricePoint, RelativeObservation, ResearchTaskResult, Source, TaskStatus, TaskWarning
 from app.text.chinese import to_simplified_chinese
 
 
@@ -35,6 +35,8 @@ def required_research_check_plan(module: ModuleConfig) -> list[dict[str, str]]:
 
     for item in module.price_checks:
         add("price", module.task_id, item)
+    for item in module.data_checks:
+        add("data", module.task_id, item)
     news_scopes = [item.instrument_id for item in module.instruments] or [module.task_id]
     for scope in news_scopes:
         for item in module.news_categories:
@@ -156,6 +158,12 @@ def validate_result(
                     field_path=f"research_checks.{check.check_id}.source_ids",
                 )
             )
+        if check.requirement_type == "data" and check.status in {
+            CheckStatus.NO_MATERIAL_FINDING,
+            CheckStatus.NOT_TRIGGERED,
+        }:
+            check.status = CheckStatus.DATA_UNAVAILABLE
+            check.conclusion_zh = f"未能获取精确数据。{check.conclusion_zh}"
 
     market_candidates: dict[str, list[dict[str, Any]]] = {}
     provider_news_articles: list[dict[str, Any]] = []
@@ -163,6 +171,7 @@ def validate_result(
     news_urls: set[str] = set()
     macro_metric_ids: set[str] = set()
     relative_metric_ids: set[str] = set()
+    relative_metric_candidates: dict[str, dict[str, Any]] = {}
     if provider_data is not None:
         for record in provider_data.get("market", {}).get("records", []):
             market_candidates.setdefault(record["instrument_id"], []).append(record)
@@ -186,10 +195,15 @@ def validate_result(
             for item in provider_data.get("macro", {}).get("relative_metrics", [])
             if item.get("metric_id")
         }
+        relative_metric_candidates = {
+            str(item["metric_id"]): item
+            for item in provider_data.get("macro", {}).get("relative_metrics", [])
+            if item.get("metric_id")
+        }
         google_queries = [
             item
             for item in provider_data.get("news", {}).get("queries", [])
-            if item.get("provider") == "google-news-rss"
+            if item.get("provider") == "google-news-rss" and not item.get("background", False)
         ]
         mandatory_news_completed = bool(google_queries) and all(item.get("status") == "success" for item in google_queries)
         if mandatory_news_completed:
@@ -421,6 +435,37 @@ def validate_result(
             raise ValidationFailure(f"relative metric has unknown source: {metric.metric_id}")
         if provider_data is not None and metric.metric_id not in relative_metric_ids:
             raise ValidationFailure(f"relative metric not found in provider data: {metric.metric_id}")
+        candidate = relative_metric_candidates.get(metric.metric_id)
+        if candidate is not None:
+            normalized_observations = []
+            for item in candidate.get("observations", []):
+                numerator = Decimal(str(item["numerator_value"]))
+                denominator = Decimal(str(item["denominator_value"]))
+                normalized_observations.append(
+                    RelativeObservation(
+                        label=str(item["label"]),
+                        as_of=item["as_of"],
+                        numerator_value=numerator,
+                        denominator_value=denominator,
+                        ratio=Decimal(str(item.get("ratio") or (numerator / denominator))).quantize(Decimal("0.0001")),
+                    )
+                )
+            normalized = (
+                metric.numerator != str(candidate["numerator"])
+                or metric.denominator != str(candidate["denominator"])
+                or metric.observations != normalized_observations
+            )
+            metric.numerator = str(candidate["numerator"])
+            metric.denominator = str(candidate["denominator"])
+            metric.observations = normalized_observations
+            if normalized:
+                warnings.append(
+                    TaskWarning(
+                        code="RELATIVE_METRIC_PROVIDER_NORMALIZED",
+                        message_zh=f"已按行情源候选值规范化相对比率：{metric.metric_id}",
+                        field_path=f"relative_metrics.{metric.metric_id}",
+                    )
+                )
         for observation in metric.observations:
             expected_ratio = (observation.numerator_value / observation.denominator_value).quantize(Decimal("0.0001"))
             if observation.ratio != expected_ratio:

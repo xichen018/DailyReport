@@ -8,8 +8,9 @@
 - 每个事实必须引用输入 sources 中存在的 source_id。
 - 配置数组中的每一项都是独立的强制检查项；不得以宽泛主题替代或省略。
 - `module.required_research_checks` 是精确输出计划。必须为其中每一项输出且仅输出一条 `research_checks` 记录；逐字复制 `check_id`、`requirement_type`、`scope_id`、`requirement_zh`，只填写 `status`、`conclusion_zh`、`source_ids`。不得改名、改 scope、合并、拆分、遗漏或新增。
+- `data_checks` 是无条件固定检查，不适用新闻重要性门槛。存在对应输入数据时必须输出；输入未提供精确数据时使用 `data_unavailable` 并明确写“未能获取精确数据”，不得使用 `no_material_finding` 或 `not_triggered`。
 - 涨跌值与涨跌幅按 schema 精度计算；`change_value` 和 `change_pct` 均四舍五入到小数点后两位。
-- 严格按当前板块的 `source_requirements` 使用候选数据，并使用中英文 `search_terms`；不得把可选 provider 的失败当作必查项缺失。Yahoo Chart API 可作为股票和指数价格的主来源，必须输出其可验证的价格候选；独立第二行情源仅作增强，失败时不得隐藏 Yahoo 价格或把价格检查标记为 `data_unavailable`。不得依赖 Yahoo Finance 网页抓取。
+- 严格按当前板块的 `source_requirements` 使用候选数据，并使用中英文 `search_terms` 和 `background_search_terms`；不得把可选 provider 的失败当作必查项缺失。`background_search_terms` 只用于取得最近可得的同口径估值、情绪或仍有效背景，必须注明原始数据日期，不得当作窗口内新增新闻。Yahoo Chart API 可作为股票和指数价格的主来源，必须输出其可验证的价格候选；独立第二行情源仅作增强，失败时不得隐藏 Yahoo 价格或把价格检查标记为 `data_unavailable`。不得依赖 Yahoo Finance 网页抓取。
 - 新闻检查的 `data_unavailable` 只适用于必查新闻源调用失败。必查新闻源查询成功但没有相关候选时，必须使用 `no_material_finding`，并写明“已检查，窗口内无相关重要新闻”，不得称为数据缺失。
 - `triggered_checks` 是条件检查：只有 provider_data 中存在满足条件的数据时才触发。可选输入未提供或条件未达到时使用 `not_triggered`，不得标记 `data_unavailable`；只有 `source_requirements` 明确规定的必查数据源调用失败时才可标记数据缺失。
 - 你不是新闻摘要器，而是投资信息筛选器。`provider_data.news.articles` 仅是待筛选材料，不要求全部输出；严禁编造。

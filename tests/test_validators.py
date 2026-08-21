@@ -55,6 +55,45 @@ class ValidatorTests(unittest.TestCase):
         validated = validate_result(result, self.module)
         self.assertTrue(any(item.code == "PRICE_CHANGE_RECALCULATED" for item in validated.warnings))
 
+    def test_relative_metric_is_normalized_from_provider_values(self) -> None:
+        module = {item.task_id: item for item in load_module_configs(ROOT / "app" / "modules")}["macro_market"]
+        provider_data = {
+            "market": self.providers.market.get_task_data(module, self.context.scheduled_for),
+            "news": self.providers.news.get_task_data(module, self.context.window.start_at, self.context.window.end_at),
+            "macro": self.providers.macro.get_task_data(module, self.context.window.start_at, self.context.window.end_at),
+        }
+        prompt = PromptBuilder(ROOT / "app" / "prompts").build(module, self.context)
+        result = ResearchTaskResult.model_validate(MockResponsesClient().create(module, prompt, provider_data))
+        result.relative_metrics[0].observations[0].numerator_value += Decimal("100")
+        result.relative_metrics[0].observations[0].ratio = Decimal("9")
+
+        validated = validate_result(result, module, provider_data)
+
+        expected = provider_data["macro"]["relative_metrics"][0]["observations"][0]
+        actual = validated.relative_metrics[0].observations[0]
+        self.assertEqual(actual.numerator_value, Decimal(expected["numerator_value"]))
+        self.assertEqual(actual.ratio, (Decimal(expected["numerator_value"]) / Decimal(expected["denominator_value"])).quantize(Decimal("0.0001")))
+        self.assertTrue(any(item.code == "RELATIVE_METRIC_PROVIDER_NORMALIZED" for item in validated.warnings))
+
+    def test_fixed_data_check_cannot_be_not_triggered(self) -> None:
+        module = {item.task_id: item for item in load_module_configs(ROOT / "app" / "modules")}["macro_market"]
+        provider_data = {
+            "market": self.providers.market.get_task_data(module, self.context.scheduled_for),
+            "news": self.providers.news.get_task_data(module, self.context.window.start_at, self.context.window.end_at),
+            "macro": self.providers.macro.get_task_data(module, self.context.window.start_at, self.context.window.end_at),
+        }
+        prompt = PromptBuilder(ROOT / "app" / "prompts").build(module, self.context)
+        result = ResearchTaskResult.model_validate(MockResponsesClient().create(module, prompt, provider_data))
+        check = next(item for item in result.research_checks if item.requirement_type == "data")
+        check.status = CheckStatus.NOT_TRIGGERED
+        check.conclusion_zh = "没有触发。"
+
+        validated = validate_result(result, module, provider_data)
+
+        self.assertEqual(check.status, CheckStatus.DATA_UNAVAILABLE)
+        self.assertIn("未能获取精确数据", check.conclusion_zh)
+        self.assertEqual(validated.status.value, "partial")
+
     def test_news_outside_window_is_rejected(self) -> None:
         broken = ResearchTaskResult.model_validate(self.raw)
         broken.instruments[0].news[0].published_at = self.context.window.end_at + timedelta(hours=1)

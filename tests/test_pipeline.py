@@ -34,6 +34,8 @@ class PipelineTests(unittest.TestCase):
                 self.assertNotIn("previous_response_id", call["prompt"])
                 self.assertIn("news_categories", call["prompt"]["module"])
                 self.assertIn("source_requirements", call["prompt"]["module"])
+                self.assertIn("data_checks", call["prompt"]["module"])
+                self.assertIn("background_search_terms", call["prompt"]["module"])
                 self.assertTrue(call["prompt"]["module"]["required_research_checks"])
                 self.assertIn("只能包含", call["prompt"]["common_rules"])
                 self.assertIn("所有输出必须使用简体中文", call["prompt"]["common_rules"])
@@ -45,6 +47,9 @@ class PipelineTests(unittest.TestCase):
                     self.assertIn("上修信号", call["prompt"]["module_instructions"])
                     self.assertIn("下修信号", call["prompt"]["module_instructions"])
                     self.assertNotIn("180 个汉字", call["prompt"]["module_instructions"])
+                if call["task_id"] == "macro_market":
+                    self.assertIn("固定数据检查与新闻筛选相互独立", call["prompt"]["module_instructions"])
+                    self.assertIn("不得根据预定日历假设数据已经公布", call["prompt"]["module_instructions"])
                 self.assertNotIn("必须检查 Marketaux", call["prompt"]["common_rules"])
             self.assertTrue((run_dir / "merged" / "report_input.json").is_file())
             self.assertTrue((run_dir / "reports" / "daily-report.html").is_file())

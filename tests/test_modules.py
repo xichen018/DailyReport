@@ -62,7 +62,15 @@ class ModuleConfigTests(unittest.TestCase):
             self.assertIn("无重大新闻", module.no_news_policy)
         self.assertTrue(any("超过1%" in item for item in by_id["us_semis_optics"].triggered_checks))
         self.assertTrue(any("明显下跌" in item for item in by_id["us_platform_media"].triggered_checks))
-        self.assertTrue(any("未能获取精确数据" in item for item in by_id["macro_market"].triggered_checks))
+        macro = by_id["macro_market"]
+        self.assertEqual(len(macro.data_checks), 9)
+        self.assertTrue(any("CME FedWatch" in item for item in macro.data_checks))
+        self.assertTrue(any("S&P 500" in item and "NTM PE" in item for item in macro.data_checks))
+        self.assertTrue(any("SOX" in item and "PB" in item for item in macro.data_checks))
+        self.assertTrue(any("CNN Fear & Greed" in item for item in macro.data_checks))
+        self.assertTrue(any("AAII" in item for item in macro.data_checks))
+        self.assertTrue(macro.background_search_terms_zh)
+        self.assertTrue(macro.background_search_terms_en)
 
 
 if __name__ == "__main__":
