@@ -32,8 +32,11 @@ PRICE_KIND_ZH = {
     "latest_24h": "最新价 / 24小时",
     "rolling_30h": "30小时滚动",
     "crosscheck_24h": "24小时交叉核验",
+    "close_crosscheck": "收盘价交叉核验",
     "yahoo_reference_close_non_official": "Yahoo 近月参考收盘（非官方结算）",
 }
+
+NON_DECISION_EVIDENCE_PHRASES = ("不能单独证明", "不能证明", "不能据此", "不足以判断", "不能单独说明")
 
 RATIONALE_LABELS = ("影响判断：", "核心变化：", "传导分析：", "关键验证：")
 
@@ -160,6 +163,10 @@ def _display_prices(prices: list[object]) -> list[object]:
     return [price for price in prices if not _price_kind_label(price.kind) == PRICE_KIND_ZH["previous_close"]]
 
 
+def _reader_evidence(items: list[str]) -> list[str]:
+    return [item for item in items if not any(phrase in item for phrase in NON_DECISION_EVIDENCE_PHRASES)]
+
+
 def _previous_close(price: object, prices: list[object]) -> object | None:
     if price.previous_value is not None:
         return price.previous_value
@@ -262,11 +269,16 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
             analysis = analyses_by_instrument.get(instrument.instrument_id)
             if analysis:
                 source_links = _html_source_links(result, analysis.source_ids)
-                evidence = "".join(f"<li>{html.escape(item)}</li>" for item in analysis.key_evidence_zh)
+                evidence_items = _reader_evidence(analysis.key_evidence_zh)
+                evidence = "".join(f"<li>{html.escape(item)}</li>" for item in evidence_items)
+                evidence_block = (
+                    f"<h4><span>B</span>关键依据</h4><ol class='analysis-evidence'>{evidence}</ol>"
+                    if evidence_items else ""
+                )
                 body.append(
                     f"<div class='asset-analysis'><h4><span>A</span>当前判断</h4>"
                     f"<p class='scenario-lead'>{html.escape(analysis.investment_view_zh)}</p>"
-                    f"<h4><span>B</span>关键依据</h4><ol class='analysis-evidence'>{evidence}</ol>"
+                    f"{evidence_block}"
                     f"<p class='news-source'>观点来源：{source_links}</p></div>"
                 )
             if instrument.news:
@@ -559,8 +571,10 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
                 source_links = _pdf_source_links(result, analysis.source_ids)
                 story.append(Paragraph("A  |  当前判断", styles["h4"]))
                 story.append(Paragraph(html.escape(analysis.investment_view_zh), styles["body"]))
-                story.append(Paragraph("B  |  关键依据", styles["h4"]))
-                for index, evidence in enumerate(analysis.key_evidence_zh, start=1):
+                evidence_items = _reader_evidence(analysis.key_evidence_zh)
+                if evidence_items:
+                    story.append(Paragraph("B  |  关键依据", styles["h4"]))
+                for index, evidence in enumerate(evidence_items, start=1):
                     story.append(Paragraph(f"{index}. {html.escape(evidence)}", styles["body"]))
                 if source_links:
                     story.append(Paragraph(f"观点来源：{source_links}", styles["small"]))

@@ -42,7 +42,7 @@ class RendererTests(unittest.TestCase):
                 news=[NewsItem(headline="现货需求变化", published_at=now, summary_zh="已确认事实。", impact=Impact.NEGATIVE, rationale_zh="该事实削弱短期需求。", source_ids=["src_1"])],
             )],
             market_observations=[MarketObservation(metric_id="btc_rsi_14d", instrument_id="bitcoin_binance", label="BTC 14日 RSI", value=Decimal("58"), unit="index", as_of=now, interpretation_zh="动量未极端。", source_ids=["src_1"])],
-            investment_analyses=[InvestmentAnalysis(instrument_id="bitcoin_binance", investment_view_zh="短期更可能回撤。", key_evidence_zh=["高位放量回落支持短期回撤判断。", "长期均线仍向上，因此不是中期反转。"], key_variable_zh="若放量跌破20日均线，回撤可能扩大。", source_ids=["src_1"])],
+            investment_analyses=[InvestmentAnalysis(instrument_id="bitcoin_binance", investment_view_zh="短期更可能回撤。", key_evidence_zh=["高位放量回落支持短期回撤判断。", "长期均线仍向上，但不能证明短期继续上涨。"], key_variable_zh="若放量跌破20日均线，回撤可能扩大。", source_ids=["src_1"])],
             upcoming_events=[UpcomingEvent(event_at=now.replace(day=25, hour=0), event_end_at=now.replace(day=28, hour=23, minute=59), title_zh="美国重要宏观数据周", affected_assets_zh=["BTC", "美股"], why_it_matters_zh="数据将影响美元利率预期，并传导至 BTC 风险偏好。", source_ids=["src_1"])],
         )
 
@@ -62,6 +62,7 @@ class RendererTests(unittest.TestCase):
         self.assertNotIn("转弱怎么看", rendered)
         self.assertNotIn("裁决条件", rendered)
         self.assertNotIn("失效条件", rendered)
+        self.assertNotIn("不能证明短期继续上涨", rendered)
         self.assertIn("未来一周关键事件", rendered)
         self.assertIn("美国重要宏观数据周", rendered)
         self.assertIn("08月25日-08月28日", rendered)
