@@ -52,6 +52,13 @@ class ModuleConfigTests(unittest.TestCase):
         for symbol, required in expected.items():
             self.assertTrue(required.issubset(focus[symbol]), symbol)
 
+    def test_investment_context_inputs_are_available(self) -> None:
+        modules = load_module_configs(ROOT / "app" / "modules")
+        for module in modules:
+            self.assertIsInstance(module.research_context, tuple)
+            for instrument in module.instruments:
+                self.assertIsInstance(instrument.investment_context, tuple)
+
     def test_execution_and_source_policies_are_configured(self) -> None:
         by_id = {item.task_id: item for item in load_module_configs(ROOT / "app" / "modules")}
         for module in by_id.values():

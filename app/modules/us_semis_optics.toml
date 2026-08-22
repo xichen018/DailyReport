@@ -1,6 +1,7 @@
 task_id = "us_semis_optics"
 title_zh = "美股半导体与光通信"
 template = "equities.md"
+research_context = []
 price_checks = ["最近美国交易日收盘价与涨跌幅", "上一美国交易日收盘价"]
 news_categories = ["财报/业绩指引", "分析师评级或目标价变动", "产品与技术发布", "大额订单/合作", "管理层变动", "监管法律动态"]
 industry_topics = ["存储周期", "HBM供需", "DRAM/NAND定价", "光模块", "数据中心光互连", "AI资本开支", "数据中心建设"]
@@ -20,6 +21,7 @@ exchange = "NASDAQ"
 currency = "USD"
 aliases = ["Micron", "美光科技"]
 focus = ["HBM", "DRAM/NAND定价", "存储周期", "HBM供需", "AI资本开支"]
+investment_context = []
 
 [[instruments]]
 instrument_id = "coherent"
@@ -30,3 +32,4 @@ exchange = "NYSE"
 currency = "USD"
 aliases = ["Coherent", "相干公司"]
 focus = ["光模块", "激光器", "数据中心光互连", "AI资本开支", "数据中心建设"]
+investment_context = []

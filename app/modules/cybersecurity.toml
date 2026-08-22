@@ -1,6 +1,7 @@
 task_id = "cybersecurity"
 title_zh = "网络安全"
 template = "equities.md"
+research_context = []
 price_checks = ["最近美国交易日收盘价与涨跌幅", "上一美国交易日收盘价"]
 news_categories = ["财报/业绩指引", "下次财报日期", "分析师评级或目标价变动", "产品与技术发布", "大额订单/合作", "管理层变动", "监管法律动态"]
 industry_topics = ["重大网络安全事件", "PANW动态", "SentinelOne（S）动态", "Zscaler（ZS）动态", "网络安全行业并购"]
@@ -20,3 +21,4 @@ exchange = "NASDAQ"
 currency = "USD"
 aliases = ["CrowdStrike"]
 focus = ["Falcon平台", "Charlotte AI", "下次财报日期", "重大网络安全事件", "PANW/S/ZS竞争动态", "行业并购"]
+investment_context = []

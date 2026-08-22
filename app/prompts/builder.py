@@ -20,6 +20,7 @@ class PromptBuilder:
             "module": {
                 "task_id": module.task_id,
                 "title_zh": module.title_zh,
+                "research_context": list(module.research_context),
                 "price_checks": list(module.price_checks),
                 "news_categories": list(module.news_categories),
                 "industry_topics": list(module.industry_topics),

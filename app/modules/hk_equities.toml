@@ -1,6 +1,7 @@
 task_id = "hk_equities"
 title_zh = "港股"
 template = "equities.md"
+research_context = []
 price_checks = ["最近香港交易日收盘价", "最近香港交易日涨跌幅", "若目标日非交易日则说明并使用最近交易日"]
 news_categories = ["财报/业绩指引", "分析师评级或目标价变动", "产品与技术发布", "大额订单/合作", "管理层变动", "监管法律动态"]
 industry_topics = ["锂价", "锂电产业链", "光模块", "AI算力需求"]
@@ -20,6 +21,7 @@ exchange = "HKEX"
 currency = "HKD"
 aliases = ["002460.SZ", "Ganfeng Lithium"]
 focus = ["锂价", "锂电产业链"]
+investment_context = []
 
 [[instruments]]
 instrument_id = "cig_shanghai_h"
@@ -30,3 +32,4 @@ exchange = "HKEX"
 currency = "HKD"
 aliases = ["603083.SS", "Cambridge Industries Group"]
 focus = ["光模块", "电信设备", "AI算力需求"]
+investment_context = []

@@ -6,6 +6,7 @@
 - 不得编造价格、百分比、新闻、标的、日期或来源。
 - `instruments` 只能包含 `module.instruments` 中配置的标的，`instrument_id` 必须逐字一致，不得把指数、宏观指标或新闻实体新增为标的。若 `module.instruments` 为空，输出中的 `instruments` 必须为空数组。
 - 每个事实必须引用输入 sources 中存在的 source_id。
+- `module.research_context` 和各标的 `investment_context` 是用户提供的研究基线，不是窗口内新闻，也不代表已经由本次来源核实。仅在判断新增事实相对既有认知的变化时使用；不得原样复述、不得为其创建新闻或 source_id、不得把其中的观点升级为已确认事实。基线与本次来源冲突时，以本次可验证来源为准并明确差异。
 - 配置数组中的每一项都是独立的强制检查项；不得以宽泛主题替代或省略。
 - `module.required_research_checks` 是精确输出计划。必须为其中每一项输出且仅输出一条 `research_checks` 记录；逐字复制 `check_id`、`requirement_type`、`scope_id`、`requirement_zh`，只填写 `status`、`conclusion_zh`、`source_ids`。不得改名、改 scope、合并、拆分、遗漏或新增。
 - `data_checks` 是无条件固定检查，不适用新闻重要性门槛。存在对应输入数据时必须输出；输入未提供精确数据时使用 `data_unavailable` 并明确写“未能获取精确数据”，不得使用 `no_material_finding` 或 `not_triggered`。

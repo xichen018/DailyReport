@@ -1,6 +1,7 @@
 task_id = "us_platform_media"
 title_zh = "美股平台与媒体"
 template = "equities.md"
+research_context = []
 price_checks = ["最近美国交易日收盘价与涨跌幅", "上一美国交易日收盘价"]
 news_categories = ["财报/业绩指引", "分析师评级或目标价变动", "产品与技术发布", "大额订单/合作", "管理层变动", "监管法律动态", "相关行业新闻"]
 industry_topics = ["生成式AI与搜索", "云计算与AI基础设施", "加密资产", "社交媒体与政治事件"]
@@ -20,6 +21,7 @@ exchange = "NASDAQ"
 currency = "USD"
 aliases = ["Alphabet", "Google"]
 focus = ["Gemini", "AI搜索", "Google Cloud", "TPU", "反垄断案件进展"]
+investment_context = []
 
 [[instruments]]
 instrument_id = "trump_media"
@@ -30,3 +32,4 @@ exchange = "NASDAQ"
 currency = "USD"
 aliases = ["Trump Media", "Truth Social"]
 focus = ["比特币储备与加密资产持仓", "Truth Social动态", "政治相关消息", "股份解禁", "增发"]
+investment_context = []

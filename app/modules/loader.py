@@ -15,6 +15,7 @@ class InstrumentConfig:
     currency: str
     aliases: tuple[str, ...]
     focus: tuple[str, ...]
+    investment_context: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class ModuleConfig:
     task_id: str
     title_zh: str
     template: str
+    research_context: tuple[str, ...]
     price_checks: tuple[str, ...]
     news_categories: tuple[str, ...]
     industry_topics: tuple[str, ...]
@@ -56,6 +58,7 @@ def load_module_configs(directory: Path) -> list[ModuleConfig]:
                 currency=item["currency"],
                 aliases=tuple(item.get("aliases", [])),
                 focus=tuple(item.get("focus", [])),
+                investment_context=tuple(item.get("investment_context", [])),
             )
             for item in data.get("instruments", [])
         )
@@ -64,6 +67,7 @@ def load_module_configs(directory: Path) -> list[ModuleConfig]:
                 task_id=data["task_id"],
                 title_zh=data["title_zh"],
                 template=data["template"],
+                research_context=tuple(data.get("research_context", [])),
                 price_checks=tuple(data.get("price_checks", [])),
                 news_categories=tuple(data.get("news_categories", [])),
                 industry_topics=tuple(data.get("industry_topics", [])),
