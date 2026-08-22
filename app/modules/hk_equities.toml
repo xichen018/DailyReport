@@ -3,6 +3,7 @@ title_zh = "港股"
 template = "equities.md"
 research_context = []
 price_checks = ["最近香港交易日收盘价", "最近香港交易日涨跌幅", "若目标日非交易日则说明并使用最近交易日"]
+data_checks = ["各标的20日、50日与200日移动均线", "各标的14日RSI与近30日最高/最低收盘", "各标的当日成交量相对20日均量"]
 news_categories = ["财报/业绩指引", "分析师评级或目标价变动", "产品与技术发布", "大额订单/合作", "管理层变动", "监管法律动态"]
 industry_topics = ["锂价", "锂电产业链", "光模块", "AI算力需求"]
 triggered_checks = []

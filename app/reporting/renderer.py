@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from decimal import Decimal
 from pathlib import Path
 from typing import Iterable
@@ -19,9 +20,9 @@ from app.schemas.models import ResearchTaskResult, RunContext, TaskStatus
 
 
 STATUS_ZH = {
-    TaskStatus.SUCCESS: "成功",
-    TaskStatus.PARTIAL: "部分成功",
-    TaskStatus.FAILED: "失败",
+    TaskStatus.SUCCESS: "已更新",
+    TaskStatus.PARTIAL: "部分数据待补",
+    TaskStatus.FAILED: "数据待补",
 }
 IMPACT_ZH = {"positive": "利好", "negative": "利空", "neutral": "中性"}
 ASSET_CLASS_ZH = {"equity": "股票", "crypto": "加密资产", "future": "期货", "index": "指数"}
@@ -33,6 +34,34 @@ PRICE_KIND_ZH = {
     "crosscheck_24h": "24小时交叉核验",
     "yahoo_reference_close_non_official": "Yahoo 近月参考收盘（非官方结算）",
 }
+
+RATIONALE_LABELS = ("影响判断：", "核心变化：", "传导分析：", "关键验证：")
+
+
+def _rationale_sections(value: str) -> list[tuple[str, str]]:
+    pattern = "(" + "|".join(re.escape(label) for label in RATIONALE_LABELS) + ")"
+    parts = re.split(pattern, value.strip())
+    if len(parts) == 1:
+        return [("", value.strip())]
+    sections: list[tuple[str, str]] = []
+    prefix = parts[0].strip()
+    if prefix:
+        sections.append(("", prefix))
+    for index in range(1, len(parts), 2):
+        label = parts[index]
+        content = parts[index + 1].strip() if index + 1 < len(parts) else ""
+        sections.append((label, content))
+    return sections
+
+
+def _html_rationale(value: str) -> str:
+    sections = _rationale_sections(value)
+    if len(sections) == 1 and not sections[0][0]:
+        return f"<p class='rationale'><strong>投资含义：</strong>{html.escape(sections[0][1])}</p>"
+    return "<div class='rationale rationale-structured'>" + "".join(
+        f"<p><strong>{html.escape(label)}</strong>{html.escape(content)}</p>"
+        for label, content in sections
+    ) + "</div>"
 
 
 def _format_number(value: object, places: int = 2) -> str:
@@ -144,7 +173,7 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
             snapshot_rows.append(
                 "<tr>"
                 f"<td><strong>{html.escape(instrument.symbol)}</strong> · {html.escape(instrument.name)}</td>"
-                "<td class='numeric flat'>数据受限</td><td class='numeric flat'>-</td>"
+                "<td class='numeric flat'>待补</td><td class='numeric flat'>-</td>"
                 f"<td>{html.escape(instrument.trading_date.isoformat() if instrument.trading_date else '-')}</td>"
                 "<td class='source-ref'>-</td></tr>"
             )
@@ -163,12 +192,11 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
         )
     sections: list[str] = []
     for section_number, result in enumerate(result_list, start=1):
-        status_class = "failed" if result.status == TaskStatus.FAILED else "ok"
+        status_class = "pending" if result.status != TaskStatus.SUCCESS else "ok"
         source_labels = _source_labels(result)
         body: list[str] = []
         if result.errors:
-            issue_title = "板块执行失败" if result.status == TaskStatus.FAILED else "数据限制"
-            body.append(f"<div class='failure'><strong>{issue_title}</strong>" + "".join(f"<p>{html.escape(error.message_zh)}</p>" for error in result.errors) + "</div>")
+            body.append("<div class='data-note'><strong>本节数据待补</strong><p>当前资料不足以形成可靠结论，本节不作推断。</p></div>")
         if result.research_checks:
             unavailable = [item for item in result.research_checks if item.status.value == "data_unavailable"]
             rows = "".join(
@@ -218,7 +246,7 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
                         f"<h4>{html.escape(item.headline)}</h4></div>"
                         f"<div class='news-meta'><time>{html.escape(item.published_at.strftime('%Y-%m-%d %H:%M %Z'))}</time>"
                         f"<span class='news-source'>来源：{source_links}</span></div>"
-                        f"<p>{html.escape(item.summary_zh)}</p><p class='rationale'><strong>投资含义：</strong>{html.escape(item.rationale_zh)}</p></article>"
+                        f"<p>{html.escape(item.summary_zh)}</p>{_html_rationale(item.rationale_zh)}</article>"
                     )
                 body.append("</div>")
             else:
@@ -238,9 +266,34 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
                     f"<h4>{html.escape(item.headline)}</h4></div>"
                     f"<div class='news-meta'><time>{html.escape(item.published_at.strftime('%Y-%m-%d %H:%M %Z'))}</time>"
                     f"<span class='news-source'>来源：{source_links}</span></div>"
-                    f"<p>{html.escape(item.summary_zh)}</p><p class='rationale'><strong>投资含义：</strong>{html.escape(item.rationale_zh)}</p></article>"
+                    f"<p>{html.escape(item.summary_zh)}</p>{_html_rationale(item.rationale_zh)}</article>"
                 )
             body.append("</div>")
+        if result.market_observations:
+            rows = "".join(
+                f"<tr><td>{html.escape(item.label)}</td><td class='numeric'>{html.escape(_format_number(item.value))}</td>"
+                f"<td>{html.escape(item.unit)}</td><td>{html.escape(item.as_of.strftime('%Y-%m-%d %H:%M %Z'))}</td>"
+                f"<td>{html.escape(item.interpretation_zh)}</td><td>{_html_source_links(result, item.source_ids)}</td></tr>"
+                for item in result.market_observations
+            )
+            body.append("<h3 class='analysis-title'>市场结构与资金指标</h3><table class='data-table signal-table'><thead><tr><th>指标</th><th>数值</th><th>单位</th><th>截至</th><th>解释</th><th>来源</th></tr></thead><tbody>" + rows + "</tbody></table>")
+        for scenario in result.scenario_analyses:
+            source_links = _html_source_links(result, scenario.source_ids)
+            scenario_instrument = next((item for item in result.instruments if item.instrument_id == scenario.instrument_id), None)
+            scenario_title = (
+                f"{scenario_instrument.name} · {scenario_instrument.symbol} 情景研判"
+                if scenario_instrument else f"{scenario.instrument_id} 情景研判"
+            )
+            body.append(
+                f"<div class='scenario'><h3>{html.escape(scenario_title)}</h3>"
+                f"<p><strong>当前结构：</strong>{html.escape(scenario.current_regime_zh)}</p>"
+                f"<p><strong>基准情景：</strong>{html.escape(scenario.base_case_zh)}</p>"
+                f"<p><strong>备选情景：</strong>{html.escape(scenario.alternative_case_zh)}</p>"
+                f"<p><strong>裁决条件：</strong>{html.escape(scenario.decision_points_zh)}</p>"
+                f"<p><strong>失效条件：</strong>{html.escape(scenario.invalidation_zh)}</p>"
+                f"<p><strong>证据缺口：</strong>{html.escape(scenario.evidence_limits_zh)}</p>"
+                f"<p class='news-source'>来源：{source_links}</p></div>"
+            )
         if result.macro_observations:
             rows = "".join(
                 f"<tr><td>{html.escape(item.label)}</td><td>{html.escape(_format_number(item.value))}</td><td>{html.escape(item.unit)}</td><td>{html.escape(item.period)}</td><td>{html.escape(_source_refs(item.source_ids, source_labels))}</td></tr>"
@@ -263,12 +316,12 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
             body.append("</ol></details>")
         sections.append(
             f"<section><div class='section-head'><div><span class='section-no'>{section_number}</span><h2>{html.escape(result.title_zh)}</h2></div>"
-            f"<span class='status {status_class}'>{STATUS_ZH[result.status]}</span></div>{''.join(body)}</section>"
+            + (f"<span class='status {status_class}'>{STATUS_ZH[result.status]}</span>" if result.status != TaskStatus.SUCCESS else "")
+            + f"</div>{''.join(body)}</section>"
         )
 
-    mode_label = "真实数据" if mode == "real" else "模拟数据"
-    footer_label = "自动化结构化研究 · 数据截至报告所示时间" if mode == "real" else "模拟数据 · 仅用于自动化流程验证"
-    delivery_note = "无失败" if delivered == len(result_list) else f"失败 {len(result_list) - delivered}"
+    mode_label = "正式研究" if mode == "real" else "设计预览"
+    footer_label = "结构化投资研究 · 数据截至报告所示时间" if mode == "real" else "版式与流程预览 · 非实时投资依据"
     return f"""<!doctype html>
 <html lang="zh-Hans"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>金融日报 {context.scheduled_for.date().isoformat()}</title>
@@ -281,13 +334,14 @@ main{{max-width:1040px;margin:24px auto;background:var(--paper);padding:46px 54p
 .mode{{display:inline-block;margin-top:8px;padding:2px 7px;border:1px solid var(--amber);color:var(--amber);font-weight:700}} .meta-strip{{display:flex;gap:28px;margin-top:16px;font-size:12px;color:var(--muted)}} .meta-strip strong{{color:var(--ink)}}
 .brief{{padding:22px 0 26px;border-bottom:2px solid var(--ink)}} .brief h2{{font-size:15px;margin:0 0 14px;text-transform:uppercase}} .brief-grid{{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line)}} .brief-item{{padding:12px 14px;border-right:1px solid var(--line)}} .brief-item:last-child{{border:0}} .brief-item span{{display:block;font-size:11px;color:var(--muted)}} .brief-item strong{{display:block;font-size:20px;margin-top:4px}}
 .snapshot{{margin-top:20px}} .snapshot h3{{font-size:13px;margin:0 0 8px}} section{{padding:30px 0;border-bottom:1px solid var(--line)}}
-.section-head{{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}} .section-head>div{{display:flex;align-items:baseline;gap:12px}} .section-no{{font-size:12px;color:var(--accent);font-weight:700}} h2{{font-size:22px;margin:0}} .status{{font-size:11px;padding:2px 7px;border:1px solid var(--accent);color:var(--accent);font-weight:700}} .status.failed{{border-color:var(--down);color:var(--down)}}
+.section-head{{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}} .section-head>div{{display:flex;align-items:baseline;gap:12px}} .section-no{{font-size:12px;color:var(--accent);font-weight:700}} h2{{font-size:22px;margin:0}} .status{{font-size:11px;padding:2px 7px;border:1px solid var(--accent);color:var(--accent);font-weight:700}} .status.pending{{border-color:var(--amber);color:var(--amber)}}
 .instrument{{margin:22px 0 28px;border-top:2px solid var(--ink);padding-top:0}} .instrument-head{{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0;padding:11px 0 10px;border-bottom:1px solid var(--line)}} .instrument-head>div{{display:flex;align-items:baseline;gap:10px;min-width:0}} .instrument-head h3{{font-size:17px;margin:0}} .instrument-head strong{{font-size:13px;color:var(--accent)}} .instrument-head span{{font-size:11px;color:var(--muted);font-weight:700;white-space:nowrap}} .instrument-head .instrument-index{{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:2px 5px;background:var(--ink);color:#fff;font-size:10px}}
 .coverage{{display:flex;justify-content:space-between;gap:12px;padding:9px 11px;background:var(--accent-soft);font-size:12px;margin-bottom:12px}}
 table{{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}} th,td{{padding:8px 9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;overflow-wrap:anywhere}} th{{background:var(--soft);font-size:10px;color:#475467;text-transform:uppercase}} td:first-child{{font-weight:500}} td span{{display:block;font-size:10px;color:var(--muted);font-weight:400;margin-top:2px}} .numeric{{text-align:right;white-space:nowrap}} .up{{color:var(--up);font-weight:700}} .down{{color:var(--down);font-weight:700}} .flat{{color:var(--muted)}} small{{font-size:9px;color:var(--muted)}}
 .data-table{{margin-bottom:13px}} .news{{border-top:0}} article{{padding:15px 0;border-bottom:1px solid var(--line)}} .event-line{{display:flex;align-items:flex-start;gap:9px}} h4{{font-size:14px;line-height:1.45;margin:0;flex:1}} .news-index{{flex:0 0 auto;color:var(--muted);font-size:10px;font-weight:700;padding-top:3px;min-width:42px}} .impact{{flex:0 0 auto;font-size:10px;font-weight:700;padding:2px 6px;border:1px solid;margin-top:1px}} .impact.positive{{color:var(--up)}} .impact.negative{{color:var(--down)}} .impact.neutral{{color:var(--muted)}}
-.news-meta{{display:flex;align-items:center;flex-wrap:wrap;gap:7px 14px;margin:6px 0 7px;padding-left:44px;color:var(--muted);font-size:11px}} time{{display:inline;margin:0}} .news-source a{{color:#175cd3;font-weight:700;text-decoration:none}} .news-source a:hover{{text-decoration:underline}} article p{{margin:4px 0;line-height:1.62;font-size:13px}} .rationale{{color:#344054}} .source-ref{{color:var(--accent);font-size:10px;font-weight:700}} .no-news{{font-size:12px;color:var(--muted);padding:12px 0;margin:0}}
-.metric-note{{border-left:3px solid var(--accent);padding:8px 12px;margin:12px 0;background:var(--soft)}} .metric-note p{{margin:4px 0;font-size:13px}} .failure{{border-left:3px solid var(--down);background:#fff5f4;padding:12px 14px;color:var(--down)}}
+.news-meta{{display:flex;align-items:center;flex-wrap:wrap;gap:7px 14px;margin:6px 0 7px;padding-left:44px;color:var(--muted);font-size:11px}} time{{display:inline;margin:0}} .news-source a{{color:#175cd3;font-weight:700;text-decoration:none}} .news-source a:hover{{text-decoration:underline}} article p{{margin:4px 0;line-height:1.62;font-size:13px}} .rationale{{color:#344054}} .rationale-structured{{border-left:2px solid #d0d5dd;padding-left:12px;margin-top:8px}} .rationale-structured p{{margin:0 0 6px}} .rationale-structured p:last-child{{margin-bottom:0}} .source-ref{{color:var(--accent);font-size:10px;font-weight:700}} .no-news{{font-size:12px;color:var(--muted);padding:12px 0;margin:0}}
+.metric-note{{border-left:3px solid var(--accent);padding:8px 12px;margin:12px 0;background:var(--soft)}} .metric-note p{{margin:4px 0;font-size:13px}} .data-note{{border-left:3px solid var(--amber);background:#fffaeb;padding:12px 14px;color:#7a4d00}} .data-note p{{margin:4px 0 0}}
+.analysis-title{{margin:16px 0 8px;font-size:14px}} .signal-table th:nth-child(1){{width:19%}} .signal-table th:nth-child(2){{width:10%}} .signal-table th:nth-child(3){{width:8%}} .signal-table th:nth-child(4){{width:16%}} .signal-table th:nth-child(6){{width:14%}} .scenario{{margin:14px 0;padding:12px 14px;border-left:3px solid var(--accent);background:var(--soft)}} .scenario h3{{margin:0 0 8px;font-size:14px}} .scenario p{{margin:5px 0;font-size:12px;line-height:1.55}}
 .quality{{margin-top:14px;color:var(--muted);font-size:11px}} .quality summary{{cursor:pointer}} .sources{{margin-top:18px;border-top:1px solid var(--line);padding-top:10px;color:var(--muted);font-size:10px}} .sources summary{{cursor:pointer;font-weight:700}} .sources ol{{padding-left:20px;margin:10px 0 0}} .sources li{{margin:6px 0;line-height:1.45;overflow-wrap:anywhere}} .sources a{{color:#175cd3}} .provider{{display:inline;margin-left:5px;padding:1px 4px;background:var(--soft);color:var(--muted)}}
 footer{{margin-top:28px;padding-top:14px;border-top:1px solid var(--ink);display:flex;justify-content:space-between;color:var(--muted);font-size:10px}}
 @media(max-width:700px){{html{{background:#fff}} main{{margin:0;padding:26px 18px;box-shadow:none}} .brand-row,.meta-strip,footer{{align-items:flex-start;flex-direction:column;gap:8px}} .edition{{text-align:left}} .brief-grid{{grid-template-columns:1fr}} .brief-item{{border-right:0;border-bottom:1px solid var(--line)}} .section-head,.instrument-head{{align-items:flex-start}} .instrument-head{{flex-direction:column;gap:4px}} .news-meta{{padding-left:0}} .snapshot,.data-table{{overflow-x:auto}} table{{min-width:690px}} h1{{font-size:27px}}}}
@@ -295,7 +349,7 @@ footer{{margin-top:28px;padding-top:14px;border-top:1px solid var(--ink);display
 </style></head><body><main>
 <header class="masthead"><div class="brand-row"><div><div class="eyebrow">Daily Investment Intelligence</div><h1>金融市场日报</h1></div><div class="edition">{context.scheduled_for.strftime('%Y年%m月%d日')}<br>香港时间 {context.scheduled_for.strftime('%H:%M')}<br><span class="mode">{mode_label}</span></div></div>
 <div class="meta-strip"><span><strong>研究窗口</strong> {context.window.start_at.strftime('%m-%d %H:%M')} - {context.window.end_at.strftime('%m-%d %H:%M')} HKT</span><span><strong>覆盖</strong> 港股 · 美股 · 加密资产 · 能源 · 宏观</span></div></header>
-<div class="brief"><h2>Executive Brief</h2><div class="brief-grid"><div class="brief-item"><span>板块交付</span><strong>{delivered}/{len(result_list)}</strong><small>{delivery_note}</small></div><div class="brief-item"><span>覆盖标的</span><strong>{len(instruments)}</strong></div><div class="brief-item"><span>窗口内事件</span><strong>{len(news_items)}</strong></div></div>
+<div class="brief"><h2>Executive Brief</h2><div class="brief-grid"><div class="brief-item"><span>研究覆盖</span><strong>{len(result_list)} 个板块</strong></div><div class="brief-item"><span>覆盖资产</span><strong>{len(instruments)} 项</strong></div><div class="brief-item"><span>重点事件</span><strong>{len(news_items)} 项</strong></div></div>
 <div class="snapshot"><h3>市场快照</h3><table><thead><tr><th>标的</th><th>价格</th><th>涨跌幅</th><th>交易日</th><th>来源</th></tr></thead><tbody>{''.join(snapshot_rows)}</tbody></table></div></div>
 {''.join(sections)}
 <footer><span>{footer_label}</span><span>生成时间 {context.scheduled_for.isoformat()}</span></footer>
@@ -336,12 +390,23 @@ def _pdf_styles() -> tuple[str, dict[str, ParagraphStyle]]:
         "h2": ParagraphStyle("ChineseH2", parent=base["Heading2"], fontName=font_name, fontSize=15, leading=20, textColor=colors.HexColor("#176B5B"), spaceBefore=12, spaceAfter=8),
         "h3": ParagraphStyle("ChineseH3", parent=base["Heading3"], fontName=font_name, fontSize=11, leading=15, spaceBefore=9, spaceAfter=6, keepWithNext=True, backColor=colors.HexColor("#F2F4F7"), borderPadding=(5, 7, 5, 7)),
         "body": ParagraphStyle("ChineseBody", parent=base["BodyText"], fontName=font_name, fontSize=9, leading=14, spaceAfter=5),
+        "rationale": ParagraphStyle("ChineseRationale", parent=base["BodyText"], fontName=font_name, fontSize=8.5, leading=13, leftIndent=8, borderColor=colors.HexColor("#D0D5DD"), borderWidth=0, borderLeftWidth=1.5, borderPadding=(0, 0, 0, 7), textColor=colors.HexColor("#344054"), spaceAfter=4),
         "small": ParagraphStyle("ChineseSmall", parent=base["BodyText"], fontName=font_name, fontSize=7.5, leading=11, textColor=colors.HexColor("#667085"), spaceAfter=3),
         "positive": ParagraphStyle("Positive", parent=base["BodyText"], fontName=font_name, fontSize=8.5, leading=13, textColor=colors.HexColor("#067647"), spaceAfter=4),
         "negative": ParagraphStyle("Negative", parent=base["BodyText"], fontName=font_name, fontSize=8.5, leading=13, textColor=colors.HexColor("#B42318"), spaceAfter=4),
         "neutral": ParagraphStyle("Neutral", parent=base["BodyText"], fontName=font_name, fontSize=8.5, leading=13, textColor=colors.HexColor("#475467"), spaceAfter=4),
         "error": ParagraphStyle("ChineseError", parent=base["BodyText"], fontName=font_name, fontSize=9, leading=14, textColor=colors.HexColor("#B42318")),
     }
+
+
+def _pdf_rationale(value: str, styles: dict[str, ParagraphStyle]) -> list[Paragraph]:
+    sections = _rationale_sections(value)
+    if len(sections) == 1 and not sections[0][0]:
+        return [Paragraph(f"<b>投资含义：</b>{html.escape(sections[0][1])}", styles["body"])]
+    return [
+        Paragraph(f"<b>{html.escape(label)}</b>{html.escape(content)}", styles["rationale"])
+        for label, content in sections
+    ]
 
 
 def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskResult], mode: str) -> None:
@@ -361,7 +426,7 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
         canvas.setLineWidth(0.6)
         canvas.line(17 * mm, A4[1] - 13 * mm, A4[0] - 17 * mm, A4[1] - 13 * mm)
         canvas.setFillColor(colors.HexColor("#667085"))
-        footer = "自动化结构化研究 · 数据截至报告所示时间" if mode == "real" else "模拟数据 · 仅用于自动化流程验证"
+        footer = "结构化投资研究 · 数据截至报告所示时间" if mode == "real" else "版式与流程预览 · 非实时投资依据"
         canvas.drawString(17 * mm, 9 * mm, footer)
         canvas.drawRightString(A4[0] - 17 * mm, 9 * mm, f"{document.page}")
         canvas.restoreState()
@@ -372,8 +437,7 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
         Paragraph(f"{context.scheduled_for.strftime('%Y年%m月%d日')} · 香港时间 {context.scheduled_for.strftime('%H:%M')} · 研究窗口 {context.window.start_at.strftime('%m-%d %H:%M')} 至 {context.window.end_at.strftime('%m-%d %H:%M')}", styles["meta"]),
         Spacer(1, 5 * mm),
     ]
-    delivery_note = "无失败" if delivered == len(result_list) else f"失败 {len(result_list) - delivered}"
-    brief_data = [["板块交付", "覆盖标的", "窗口内事件"], [f"{delivered}/{len(result_list)}  ({delivery_note})", str(len(instruments)), str(news_count)]]
+    brief_data = [["研究覆盖", "覆盖资产", "重点事件"], [f"{len(result_list)} 个板块", f"{len(instruments)} 项", f"{news_count} 项"]]
     brief = Table(brief_data, colWidths=[53 * mm, 53 * mm, 53 * mm])
     brief.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), font_name), ("ALIGN", (0, 0), (-1, -1), "CENTER"),
@@ -387,7 +451,7 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
     for instrument in instruments:
         identity = Paragraph(f"<b>{html.escape(instrument.symbol)}</b> · {html.escape(instrument.name)}", styles["small"])
         if not instrument.prices:
-            snapshot.append([identity, "数据受限", "-", str(instrument.trading_date or "-"), "-"])
+            snapshot.append([identity, "待补", "-", str(instrument.trading_date or "-"), "-"])
             continue
         price = instrument.prices[0]
         owner = next(result for result in result_list if instrument in result.instruments)
@@ -412,13 +476,15 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
         status_suffix = f" · {STATUS_ZH[result.status]}" if result.status != TaskStatus.SUCCESS else ""
         source_labels = _source_labels(result)
         story.append(Paragraph(f"{section_number}  {result.title_zh}{status_suffix}", styles["h2"]))
-        for error in result.errors:
-            issue_title = "失败原因" if result.status == TaskStatus.FAILED else "数据限制"
-            story.append(Paragraph(f"{issue_title}：{html.escape(error.message_zh)}", styles["error"]))
+        if result.errors:
+            story.append(Paragraph("本节数据待补：当前资料不足以形成可靠结论，本节不作推断。", styles["meta"]))
         if result.research_checks:
             unavailable = sum(item.status.value == "data_unavailable" for item in result.research_checks)
             covered = len(result.research_checks) - unavailable
-            story.append(Paragraph(f"已核查：{covered}/{len(result.research_checks)}；数据受限：{unavailable} 项", styles["meta"]))
+            coverage_text = f"研究覆盖：{covered}/{len(result.research_checks)}"
+            if unavailable:
+                coverage_text += f"；待补数据：{unavailable} 项"
+            story.append(Paragraph(coverage_text, styles["meta"]))
         for instrument_number, instrument in enumerate(result.instruments, start=1):
             instrument_heading = Paragraph(
                 f"{section_number}.{instrument_number}  |  {html.escape(instrument.name)}  |  {html.escape(instrument.symbol)}  |  "
@@ -458,7 +524,8 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
                     story.append(Paragraph(f"{section_number}.{instrument_number}.{news_number}  |  {IMPACT_ZH[item.impact.value]}  |  {html.escape(item.headline)}", impact_style))
                     if source_links:
                         story.append(Paragraph(f"来源：{source_links}", styles["small"]))
-                    story.append(Paragraph(f"{html.escape(item.summary_zh)} {html.escape(item.rationale_zh)}", styles["body"]))
+                    story.append(Paragraph(html.escape(item.summary_zh), styles["body"]))
+                    story.extend(_pdf_rationale(item.rationale_zh, styles))
             else:
                 story.append(Paragraph("窗口内无重大新闻。", styles["meta"]))
         if result.section_news:
@@ -470,7 +537,41 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
                 story.append(Paragraph(f"{section_number}.{section_news_group}.{news_number}  |  {IMPACT_ZH[item.impact.value]}  |  {html.escape(item.headline)}", impact_style))
                 if source_links:
                     story.append(Paragraph(f"来源：{source_links}", styles["small"]))
-                story.append(Paragraph(f"{html.escape(item.summary_zh)} {html.escape(item.rationale_zh)}", styles["body"]))
+                story.append(Paragraph(html.escape(item.summary_zh), styles["body"]))
+                story.extend(_pdf_rationale(item.rationale_zh, styles))
+        if result.market_observations:
+            story.append(Paragraph("市场结构与资金指标", styles["h3"]))
+            data = [["指标", "数值", "截至", "解释"]]
+            for item in result.market_observations:
+                data.append([
+                    Paragraph(html.escape(item.label), styles["small"]),
+                    Paragraph(f"{_format_number(item.value)} {html.escape(item.unit)}", styles["small"]),
+                    Paragraph(item.as_of.strftime("%m-%d %H:%M"), styles["small"]),
+                    Paragraph(html.escape(item.interpretation_zh), styles["small"]),
+                ])
+            table = Table(data, colWidths=[38 * mm, 30 * mm, 27 * mm, 66 * mm], repeatRows=1)
+            table.setStyle(TableStyle([
+                ("FONTNAME", (0, 0), (-1, -1), font_name), ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E6F4F1")),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#D0D5DD")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]))
+            story.append(table)
+        for scenario in result.scenario_analyses:
+            scenario_instrument = next((item for item in result.instruments if item.instrument_id == scenario.instrument_id), None)
+            scenario_title = (
+                f"{scenario_instrument.name} · {scenario_instrument.symbol} 情景研判"
+                if scenario_instrument else f"{scenario.instrument_id} 情景研判"
+            )
+            story.append(Paragraph(html.escape(scenario_title), styles["h3"]))
+            for label, value in (
+                ("当前结构", scenario.current_regime_zh), ("基准情景", scenario.base_case_zh),
+                ("备选情景", scenario.alternative_case_zh), ("裁决条件", scenario.decision_points_zh),
+                ("失效条件", scenario.invalidation_zh), ("证据缺口", scenario.evidence_limits_zh),
+            ):
+                story.append(Paragraph(f"<b>{label}：</b>{html.escape(value)}", styles["body"]))
         for item in result.macro_observations:
             story.append(Paragraph(f"{item.label}：{_format_number(item.value)} {item.unit}（{item.period}）[{html.escape(_source_refs(item.source_ids, source_labels))}]", styles["body"]))
         for metric in result.relative_metrics:

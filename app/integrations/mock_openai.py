@@ -148,6 +148,32 @@ class MockResponsesClient:
             sid = source_id(item["url"], provider_data["macro"]["provider"], "Mock Macro Authority")
             macro_observations.append({**{k: v for k, v in item.items() if k != "url"}, "source_ids": [sid]})
 
+        market_observations = []
+        for item in provider_data["market"].get("signals", []):
+            sid = source_id(item["source_url"], provider_data["market"]["provider"], "Mock Exchange")
+            market_observations.append({
+                **{k: v for k, v in item.items() if k not in {"source_url", "provider"}},
+                "interpretation_zh": "该指标用于判断趋势、拥挤度与情景触发条件，不单独构成方向结论。",
+                "source_ids": [sid],
+            })
+
+        scenario_analyses = []
+        for instrument in module.instruments:
+            instrument_observations = [item for item in market_observations if item["instrument_id"] == instrument.instrument_id]
+            if not instrument_observations:
+                continue
+            evidence_ids = sorted({sid for item in instrument_observations for sid in item["source_ids"]})
+            scenario_analyses.append({
+                "instrument_id": instrument.instrument_id,
+                "current_regime_zh": "模拟指标显示价格结构需要结合资产专属基本面判断。",
+                "base_case_zh": "若价格维持趋势基准且基本面验证未走弱，延续情景保持有效。",
+                "alternative_case_zh": "若价格跌破趋势基准且基本面验证恶化，反向情景权重上升。",
+                "decision_points_zh": "以结构化均线、区间边界、成交量和资产专属经营数据共同确认。",
+                "invalidation_zh": "价格结构与基本面证据同时反向时，原情景失效。",
+                "evidence_limits_zh": "模拟数据不含完整资产专属基本面指标，不能仅凭价格结构判断方向。",
+                "source_ids": evidence_ids,
+            })
+
         relative_metrics = []
         for item in provider_data["macro"]["relative_metrics"]:
             sid = source_id(item["url"], provider_data["macro"]["provider"], "Mock Index Provider")
@@ -217,6 +243,8 @@ class MockResponsesClient:
             window=window,
             instruments=instruments,
             macro_observations=macro_observations,
+            market_observations=market_observations,
+            scenario_analyses=scenario_analyses,
             relative_metrics=relative_metrics,
             research_checks=research_checks,
             sources=sources,

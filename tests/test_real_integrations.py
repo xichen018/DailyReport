@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import unittest
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -72,6 +72,35 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual(record["provider"], "binance")
         self.assertEqual(record["value"], "65000")
 
+    def test_binance_structure_calculates_trend_momentum_and_volume(self) -> None:
+        rows = []
+        for index in range(220):
+            close = 100 + index
+            rows.append([index, str(close - 1), str(close + 1), str(close - 2), str(close), str(1000 + index), index, "0", 0, "0", "0", "0"])
+        with patch("app.providers.http._get", return_value=json.dumps(rows).encode()):
+            signals = FreeMarketDataProvider()._binance_structure()
+
+        by_id = {item["metric_id"]: item for item in signals}
+        self.assertEqual(by_id["btc_sma_20d"]["value"], "309.50")
+        self.assertEqual(by_id["btc_sma_200d"]["value"], "219.50")
+        self.assertEqual(by_id["btc_rsi_14d"]["value"], "100.00")
+        self.assertIn("btc_volume_vs_20d", by_id)
+
+    def test_binance_structure_excludes_unfinished_daily_bar(self) -> None:
+        rows = []
+        for index in range(202):
+            close = 100 + index
+            close_time = index
+            rows.append([index, str(close), str(close), str(close), str(close), "1000", close_time, "0", 0, "0", "0", "0"])
+        rows[-1][4] = "99999"
+        rows[-1][6] = 9999999999999
+        with patch("app.providers.http._get", return_value=json.dumps(rows).encode()):
+            signals = FreeMarketDataProvider()._binance_structure()
+
+        by_id = {item["metric_id"]: item for item in signals}
+        self.assertNotEqual(by_id["btc_30d_high"]["value"], "99999.00")
+        self.assertEqual(by_id["btc_30d_high"]["value"], "300.00")
+
     def test_tencent_hk_response_is_normalized(self) -> None:
         fields = [""] * 33
         fields[3], fields[4], fields[30], fields[32] = "39.000", "40.080", "2026/08/18 16:08:06", "-2.69"
@@ -116,6 +145,29 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual(record["value"], "102.0")
         self.assertEqual(record["previous_value"], "100.0")
         self.assertEqual(record["session_date"], "2026-08-20")
+
+    def test_yahoo_structure_calculates_asset_specific_signals(self) -> None:
+        timestamps = [
+            int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp()) + index * 86400
+            for index in range(220)
+        ]
+        closes = [100.0 + index for index in range(220)]
+        volumes = [1000 + index for index in range(220)]
+        payload = json.dumps({
+            "chart": {"result": [{
+                "timestamp": timestamps,
+                "indicators": {"quote": [{"close": closes, "volume": volumes}]},
+            }]}
+        }).encode()
+        with patch("app.providers.http._get", return_value=payload):
+            signals = FreeMarketDataProvider()._yahoo_structure(
+                "alphabet_c", "GOOG", "USD", date(2026, 8, 8), ZoneInfo("America/New_York")
+            )
+
+        by_id = {item["metric_id"]: item for item in signals}
+        self.assertEqual(by_id["alphabet_c_sma_20d"]["instrument_id"], "alphabet_c")
+        self.assertEqual(by_id["alphabet_c_sma_20d"]["value"], "309.50")
+        self.assertEqual(by_id["alphabet_c_rsi_14d"]["value"], "100.00")
 
     def test_google_news_uses_separate_chinese_and_english_locales(self) -> None:
         module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "cybersecurity")
@@ -167,6 +219,24 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual(observations[0]["ratio"], "0.2500")
         self.assertEqual(observations[-1]["as_of"], "2026-01-02")
         self.assertEqual(observations[-1]["numerator_value"], "5000")
+
+    def test_cross_asset_receives_fred_liquidity_series(self) -> None:
+        module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "cross_asset")
+        payloads = {
+            "DFF": b"observation_date,DFF\n2026-08-21,4.25\n",
+            "DGS10": b"observation_date,DGS10\n2026-08-21,4.10\n",
+            "DTWEXBGS": b"observation_date,DTWEXBGS\n2026-08-21,118.2\n",
+        }
+
+        def fake_get(url: str, _: float) -> bytes:
+            return next(payload for series, payload in payloads.items() if f"id={series}" in url)
+
+        end_at = datetime(2026, 8, 22, tzinfo=ZoneInfo("Asia/Hong_Kong"))
+        with patch("app.providers.http._get", side_effect=fake_get):
+            result = FredMacroDataProvider().get_task_data(module, end_at.replace(day=21), end_at)
+
+        self.assertEqual({item["metric_id"] for item in result["observations"]}, {"dff", "dgs10", "dtwexbgs"})
+        self.assertEqual(result["relative_metrics"], [])
 
     def test_marketaux_token_is_not_returned_in_provider_bundle(self) -> None:
         module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "cybersecurity")

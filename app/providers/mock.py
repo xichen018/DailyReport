@@ -34,7 +34,21 @@ class MockMarketDataProvider:
                     "source_url": f"https://example.test/market/{instrument.symbol}",
                 }
             )
-        return {"provider": self.name, "records": records}
+        signals = []
+        for instrument in module.instruments:
+            metric_rows = (
+                (f"{instrument.instrument_id}_sma_20d", f"{instrument.symbol} 20日简单移动均线", "72.00", instrument.currency),
+                (f"{instrument.instrument_id}_rsi_14d", f"{instrument.symbol} 14日 RSI", "58.00", "index"),
+            )
+            if instrument.symbol == "BTCUSDT":
+                metric_rows = (
+                    ("btc_sma_20d", "BTC 20日简单移动均线", "72.00", "USDT"),
+                    ("btc_rsi_14d", "BTC 14日 RSI", "58.00", "index"),
+                    ("btc_perp_funding", "BTCUSDT 永续资金费率", "0.0100", "%"),
+                )
+            for metric_id, label, value, unit in metric_rows:
+                signals.append({"metric_id": metric_id, "instrument_id": instrument.instrument_id, "label": label, "value": value, "unit": unit, "as_of": as_of.isoformat(), "source_url": f"https://example.test/market/{metric_id}"})
+        return {"provider": self.name, "records": records, "signals": signals}
 
 
 class MockNewsProvider:
@@ -119,4 +133,3 @@ class MockProviderBundle(ProviderBundle):
             macro=MockMacroDataProvider(),
             calendar=SimpleTradingCalendar(),
         )
-

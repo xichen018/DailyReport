@@ -172,6 +172,7 @@ def validate_result(
     macro_metric_ids: set[str] = set()
     relative_metric_ids: set[str] = set()
     relative_metric_candidates: dict[str, dict[str, Any]] = {}
+    market_signal_candidates: dict[tuple[str, str], dict[str, Any]] = {}
     if provider_data is not None:
         for record in provider_data.get("market", {}).get("records", []):
             market_candidates.setdefault(record["instrument_id"], []).append(record)
@@ -199,6 +200,11 @@ def validate_result(
             str(item["metric_id"]): item
             for item in provider_data.get("macro", {}).get("relative_metrics", [])
             if item.get("metric_id")
+        }
+        market_signal_candidates = {
+            (str(item["instrument_id"]), str(item["metric_id"])): item
+            for item in provider_data.get("market", {}).get("signals", [])
+            if item.get("instrument_id") and item.get("metric_id")
         }
         google_queries = [
             item
@@ -425,6 +431,41 @@ def validate_result(
 
     result.section_news = validated_news(result.section_news, "section_news")
 
+    for observation in result.market_observations:
+        if set(observation.source_ids) - source_ids:
+            raise ValidationFailure(f"market observation has unknown source: {observation.metric_id}")
+        candidate = market_signal_candidates.get((observation.instrument_id, observation.metric_id))
+        if provider_data is not None and candidate is None:
+            raise ValidationFailure(f"market observation not found in provider data: {observation.metric_id}")
+        if candidate is not None:
+            expected = Decimal(str(candidate["value"]))
+            try:
+                actual = Decimal(str(observation.value))
+            except Exception as exc:
+                raise ValidationFailure(f"market observation is not numeric: {observation.metric_id}") from exc
+            if abs(actual - expected) > Decimal("0.0001"):
+                raise ValidationFailure(f"market observation value mismatch: {observation.metric_id}")
+            observation.value = expected
+            observation.label = str(candidate["label"])
+            observation.unit = str(candidate["unit"])
+            observation.as_of = datetime.fromisoformat(str(candidate["as_of"]).replace("Z", "+00:00"))
+    configured_instruments = {item.instrument_id for item in module.instruments}
+    for scenario in result.scenario_analyses:
+        if scenario.instrument_id not in configured_instruments:
+            raise ValidationFailure(f"scenario has unknown instrument: {scenario.instrument_id}")
+        if set(scenario.source_ids) - source_ids:
+            raise ValidationFailure(f"scenario has unknown source: {scenario.instrument_id}")
+    if market_signal_candidates:
+        reported_signals = {(item.instrument_id, item.metric_id) for item in result.market_observations}
+        missing_signals = set(market_signal_candidates) - reported_signals
+        if missing_signals:
+            raise ValidationFailure(f"market observations missing: {sorted(missing_signals)}")
+        signal_instruments = {instrument_id for instrument_id, _ in market_signal_candidates}
+        scenario_instruments = {item.instrument_id for item in result.scenario_analyses}
+        missing_scenarios = signal_instruments - scenario_instruments
+        if missing_scenarios:
+            raise ValidationFailure(f"scenario analyses missing: {sorted(missing_scenarios)}")
+
     for observation in result.macro_observations:
         if set(observation.source_ids) - source_ids:
             raise ValidationFailure(f"macro observation has unknown source: {observation.metric_id}")
@@ -490,6 +531,10 @@ def validate_result(
         referenced_source_ids.update(news.source_ids)
     for observation in result.macro_observations:
         referenced_source_ids.update(observation.source_ids)
+    for observation in result.market_observations:
+        referenced_source_ids.update(observation.source_ids)
+    for scenario in result.scenario_analyses:
+        referenced_source_ids.update(scenario.source_ids)
     for metric in result.relative_metrics:
         referenced_source_ids.update(metric.source_ids)
     for check in result.research_checks:

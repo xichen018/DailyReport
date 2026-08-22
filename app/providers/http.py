@@ -91,6 +91,64 @@ class FreeMarketDataProvider:
             "source_url": url, "provider": "binance",
         }]
 
+    @staticmethod
+    def _rsi(closes: list[Decimal], period: int = 14) -> Decimal:
+        changes = [current - previous for previous, current in zip(closes[-period - 1:-1], closes[-period:])]
+        gains = sum((change for change in changes if change > 0), Decimal("0")) / period
+        losses = sum((-change for change in changes if change < 0), Decimal("0")) / period
+        if losses == 0:
+            return Decimal("100")
+        return Decimal("100") - Decimal("100") / (Decimal("1") + gains / losses)
+
+    def _binance_structure(self) -> list[dict[str, Any]]:
+        url = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=220"
+        rows = json.loads(_get(url, self.timeout))
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        rows = [row for row in rows if int(row[6]) <= now_ms]
+        if len(rows) < 201:
+            raise ValueError("insufficient Binance daily bars for BTC structure")
+        closes = [Decimal(str(row[4])) for row in rows]
+        volumes = [Decimal(str(row[5])) for row in rows]
+        as_of = datetime.fromtimestamp(rows[-1][6] / 1000, timezone.utc).isoformat()
+        signals = []
+
+        def add(metric_id: str, label: str, value: Decimal, unit: str) -> None:
+            signals.append({
+                "metric_id": metric_id, "instrument_id": "bitcoin_binance", "label": label,
+                "value": str(value.quantize(Decimal("0.01"))), "unit": unit, "as_of": as_of,
+                "source_url": url, "provider": "binance-klines",
+            })
+
+        for period in (20, 50, 200):
+            add(f"btc_sma_{period}d", f"BTC {period}日简单移动均线", sum(closes[-period:]) / period, "USDT")
+        add("btc_rsi_14d", "BTC 14日 RSI", self._rsi(closes), "index")
+        add("btc_30d_high", "BTC 近30日最高收盘", max(closes[-30:]), "USDT")
+        add("btc_30d_low", "BTC 近30日最低收盘", min(closes[-30:]), "USDT")
+        average_volume = sum(volumes[-21:-1]) / 20
+        add("btc_volume_vs_20d", "BTC 当日成交量相对20日均量", volumes[-1] / average_volume, "ratio")
+        return signals
+
+    def _binance_derivatives(self) -> list[dict[str, Any]]:
+        funding_url = "https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=3"
+        open_interest_url = "https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT"
+        funding = json.loads(_get(funding_url, self.timeout))
+        open_interest = json.loads(_get(open_interest_url, self.timeout))
+        latest = funding[-1]
+        return [
+            {
+                "metric_id": "btc_perp_funding", "instrument_id": "bitcoin_binance", "label": "BTCUSDT 永续资金费率",
+                "value": str((Decimal(str(latest["fundingRate"])) * 100).quantize(Decimal("0.0001"))), "unit": "%",
+                "as_of": datetime.fromtimestamp(latest["fundingTime"] / 1000, timezone.utc).isoformat(),
+                "source_url": funding_url, "provider": "binance-futures",
+            },
+            {
+                "metric_id": "btc_perp_open_interest", "instrument_id": "bitcoin_binance", "label": "BTCUSDT 永续未平仓量",
+                "value": str(Decimal(str(open_interest["openInterest"]))), "unit": "BTC",
+                "as_of": datetime.fromtimestamp(open_interest["time"] / 1000, timezone.utc).isoformat(),
+                "source_url": open_interest_url, "provider": "binance-futures",
+            },
+        ]
+
     def _coingecko(self) -> list[dict[str, Any]]:
         url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true"
         item = json.loads(_get(url, self.timeout))["bitcoin"]
@@ -139,6 +197,50 @@ class FreeMarketDataProvider:
             "source_url": url, "provider": "yahoo-chart",
         }]
 
+    def _yahoo_structure(
+        self,
+        instrument_id: str,
+        symbol: str,
+        currency: str,
+        closed_session: date,
+        market_timezone: ZoneInfo,
+    ) -> list[dict[str, Any]]:
+        remote = YAHOO_SYMBOLS.get(symbol, symbol)
+        encoded = urllib.parse.quote(remote, safe="")
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range=1y&interval=1d&events=history"
+        result = json.loads(_get(url, self.timeout))["chart"]["result"][0]
+        quotes = result["indicators"]["quote"][0]
+        bars = [
+            (ts, Decimal(str(close)), Decimal(str(volume)))
+            for ts, close, volume in zip(result["timestamp"], quotes["close"], quotes.get("volume", []))
+            if close is not None and volume is not None
+            and datetime.fromtimestamp(ts, timezone.utc).astimezone(market_timezone).date() <= closed_session
+        ]
+        if len(bars) < 31:
+            raise ValueError(f"insufficient Yahoo daily bars for structure: {symbol}")
+        closes = [item[1] for item in bars]
+        volumes = [item[2] for item in bars]
+        as_of = datetime.fromtimestamp(bars[-1][0], timezone.utc).isoformat()
+        signals: list[dict[str, Any]] = []
+
+        def add(suffix: str, label: str, value: Decimal, unit: str) -> None:
+            signals.append({
+                "metric_id": f"{instrument_id}_{suffix}", "instrument_id": instrument_id, "label": label,
+                "value": str(value.quantize(Decimal("0.01"))), "unit": unit, "as_of": as_of,
+                "source_url": url, "provider": "yahoo-chart-structure",
+            })
+
+        for period in (20, 50, 200):
+            if len(closes) >= period:
+                add(f"sma_{period}d", f"{symbol} {period}日简单移动均线", sum(closes[-period:]) / period, currency)
+        add("rsi_14d", f"{symbol} 14日 RSI", self._rsi(closes), "index")
+        add("30d_high", f"{symbol} 近30日最高收盘", max(closes[-30:]), currency)
+        add("30d_low", f"{symbol} 近30日最低收盘", min(closes[-30:]), currency)
+        average_volume = sum(volumes[-21:-1]) / 20
+        if average_volume > 0:
+            add("volume_vs_20d", f"{symbol} 当日成交量相对20日均量", volumes[-1] / average_volume, "ratio")
+        return signals
+
     def _stooq(self, instrument_id: str, symbol: str, currency: str) -> list[dict[str, Any]]:
         remote = STOOQ_SYMBOLS[symbol]
         url = f"https://stooq.com/q/d/l/?s={urllib.parse.quote(remote)}&i=d"
@@ -172,6 +274,7 @@ class FreeMarketDataProvider:
 
     def get_task_data(self, module: ModuleConfig, as_of: datetime) -> dict[str, Any]:
         records: list[dict[str, Any]] = []
+        signals: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
         for instrument in module.instruments:
             if instrument.symbol == "BTCUSDT":
@@ -187,6 +290,14 @@ class FreeMarketDataProvider:
                     records.extend(self._coingecko())
                 except Exception as exc:
                     errors.append(_error("coingecko", exc))
+                try:
+                    signals.extend(self._binance_structure())
+                except Exception as exc:
+                    errors.append(_error("binance-structure", exc))
+                try:
+                    signals.extend(self._binance_derivatives())
+                except Exception as exc:
+                    errors.append(_error("binance-derivatives", exc))
             try:
                 calendar_name = "HKEX" if instrument.exchange == "HKEX" else "NYMEX" if instrument.exchange == "NYMEX" else "US"
                 closed_session = None if instrument.asset_class == "crypto" else self.calendar.latest_closed_session(calendar_name, as_of)
@@ -198,6 +309,14 @@ class FreeMarketDataProvider:
                     closed_session,
                     market_timezone,
                 ))
+                if instrument.asset_class != "crypto" and closed_session is not None and market_timezone is not None:
+                    signals.extend(self._yahoo_structure(
+                        instrument.instrument_id,
+                        instrument.symbol,
+                        instrument.currency,
+                        closed_session,
+                        market_timezone,
+                    ))
             except Exception as exc:
                 errors.append(_error("yahoo-chart", exc))
             if instrument.exchange == "HKEX":
@@ -210,7 +329,7 @@ class FreeMarketDataProvider:
                     records.extend(self._stooq(instrument.instrument_id, instrument.symbol, instrument.currency))
                 except Exception as exc:
                     errors.append(_error("stooq", exc))
-        return {"provider": self.name, "records": records, "errors": errors, "as_of": as_of.isoformat()}
+        return {"provider": self.name, "records": records, "signals": signals, "errors": errors, "as_of": as_of.isoformat()}
 
 
 class FreeNewsProvider:
@@ -340,6 +459,8 @@ class FreeNewsProvider:
 class FredMacroDataProvider:
     name = "fred-public"
     SERIES = {"VIXCLS": "VIX", "CPIAUCSL": "美国 CPI", "DFF": "联邦基金有效利率"}
+    BTC_LIQUIDITY_SERIES = {"DFF": "联邦基金有效利率", "DGS10": "美国10年期国债收益率", "DTWEXBGS": "广义美元指数"}
+    SERIES_UNITS = {"VIXCLS": "index", "CPIAUCSL": "index", "DFF": "%", "DGS10": "%", "DTWEXBGS": "index"}
 
     def __init__(self, timeout: float = 25.0) -> None:
         self.timeout = timeout
@@ -360,22 +481,25 @@ class FredMacroDataProvider:
         return min(values, key=lambda item: abs(item[0] - target_ts))
 
     def get_task_data(self, module: ModuleConfig, start_at: datetime, end_at: datetime) -> dict[str, Any]:
-        if module.task_id != "macro_market":
+        if module.task_id not in {"macro_market", "cross_asset"}:
             return {"provider": self.name, "observations": [], "relative_metrics": [], "errors": []}
         observations: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
-        for series_id, label in self.SERIES.items():
+        series = self.SERIES if module.task_id == "macro_market" else self.BTC_LIQUIDITY_SERIES
+        for series_id, label in series.items():
             start_date = (end_at - timedelta(days=400)).date().isoformat()
             url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}&cosd={start_date}"
             try:
                 rows = list(csv.DictReader(io.StringIO(_get(url, self.timeout).decode("utf-8"))))
                 current = next(row for row in reversed(rows) if row.get(series_id) not in {None, "", "."})
                 date_field = "observation_date" if "observation_date" in current else "DATE"
-                observations.append({"metric_id": series_id.lower(), "label": label, "value": current[series_id], "period": current[date_field], "url": url, "provider": "fred"})
+                observations.append({"metric_id": series_id.lower(), "label": label, "value": current[series_id], "unit": self.SERIES_UNITS[series_id], "period": current[date_field], "url": url, "provider": "fred"})
             except Exception as exc:
                 errors.append(_error("fred", exc))
 
         relative_metrics: list[dict[str, Any]] = []
+        if module.task_id == "cross_asset":
+            return {"provider": self.name, "observations": observations, "relative_metrics": [], "errors": errors}
         try:
             histories = {}
             urls = {}

@@ -3,6 +3,7 @@ title_zh = "网络安全"
 template = "equities.md"
 research_context = []
 price_checks = ["最近美国交易日收盘价与涨跌幅", "上一美国交易日收盘价"]
+data_checks = ["各标的20日、50日与200日移动均线", "各标的14日RSI与近30日最高/最低收盘", "各标的当日成交量相对20日均量"]
 news_categories = ["财报/业绩指引", "下次财报日期", "分析师评级或目标价变动", "产品与技术发布", "大额订单/合作", "管理层变动", "监管法律动态"]
 industry_topics = ["重大网络安全事件", "PANW动态", "SentinelOne（S）动态", "Zscaler（ZS）动态", "网络安全行业并购"]
 triggered_checks = ["输入提供盘前或盘后行情且涨跌幅绝对值超过1%时，查明并报告原因", "判断下次财报日期是否临近"]

@@ -49,6 +49,7 @@ class PipelineTests(unittest.TestCase):
                 self.assertIn("是本次可使用的全部事实边界", call["prompt"]["common_rules"])
                 self.assertIn("不得凭模型记忆", call["prompt"]["common_rules"])
                 self.assertIn("不得补写新旧目标价", call["prompt"]["common_rules"])
+                self.assertIn("每个拥有结构化市场指标", call["prompt"]["common_rules"])
                 if call["task_id"] in {"hk_equities", "us_semis_optics", "us_platform_media", "cybersecurity"}:
                     self.assertIn("影响判断", call["prompt"]["module_instructions"])
                     self.assertIn("核心变化", call["prompt"]["module_instructions"])
@@ -57,9 +58,14 @@ class PipelineTests(unittest.TestCase):
                     self.assertIn("传导分析", call["prompt"]["module_instructions"])
                     self.assertIn("正向证据", call["prompt"]["module_instructions"])
                     self.assertIn("负向证据", call["prompt"]["module_instructions"])
+                    self.assertIn("禁止套用", call["prompt"]["module_instructions"])
                     self.assertIn("不预测股价", call["prompt"]["module_instructions"])
                     self.assertNotIn("未来 2-8 周", call["prompt"]["module_instructions"])
                     self.assertNotIn("180 个汉字", call["prompt"]["module_instructions"])
+                if call["task_id"] == "cross_asset":
+                    self.assertIn("provider_data.market.signals", call["prompt"]["module_instructions"])
+                    self.assertIn("scenario_analyses", call["prompt"]["module_instructions"])
+                    self.assertIn("没有重大新闻不等于没有市场结构分析", call["prompt"]["module_instructions"])
                 if call["task_id"] == "macro_market":
                     self.assertIn("固定数据检查与新闻筛选相互独立", call["prompt"]["module_instructions"])
                     self.assertIn("不得根据预定日历假设数据已经公布", call["prompt"]["module_instructions"])
@@ -77,6 +83,11 @@ class PipelineTests(unittest.TestCase):
             self.assertIn("研究要求覆盖", html_report)
             report_json = json.loads((run_dir / "reports" / "daily-report.json").read_text(encoding="utf-8"))
             self.assertTrue(all(task["research_checks"] for task in report_json["tasks"]))
+            for task in report_json["tasks"]:
+                instrument_ids = {item["instrument_id"] for item in task["instruments"]}
+                if instrument_ids:
+                    self.assertEqual({item["instrument_id"] for item in task["scenario_analyses"]}, instrument_ids)
+                    self.assertTrue(task["market_observations"])
             self.assertIn("https://example.test/market/", html_report)
             self.assertIn("Mock Exchange", html_report)
             self.assertIn("查看原文</a>", html_report)
