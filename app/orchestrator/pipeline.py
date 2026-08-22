@@ -65,13 +65,23 @@ class DailyReportPipeline:
             errors=[TaskError(code=type(exc).__name__.upper(), stage=stage, message_zh=str(exc), retryable=False)],
         )
 
-    def _run_task(self, module: ModuleConfig, context: Any, run_dir: Path) -> ResearchTaskResult:
+    def _run_task(
+        self,
+        module: ModuleConfig,
+        context: Any,
+        run_dir: Path,
+        shared_context: dict[str, Any],
+    ) -> ResearchTaskResult:
         try:
-            provider_data = {
-                "market": self.providers.market.get_task_data(module, context.scheduled_for),
-                "news": self.providers.news.get_task_data(module, context.window.start_at, context.window.end_at),
-                "macro": self.providers.macro.get_task_data(module, context.window.start_at, context.window.end_at),
-            }
+            if module.task_id == "macro_market":
+                provider_data = {**shared_context, "shared_context": shared_context}
+            else:
+                provider_data = {
+                    "market": self.providers.market.get_task_data(module, context.scheduled_for),
+                    "news": self.providers.news.get_task_data(module, context.window.start_at, context.window.end_at),
+                    "macro": self.providers.macro.get_task_data(module, context.window.start_at, context.window.end_at),
+                    "shared_context": shared_context,
+                }
             _write_json(run_dir / "raw" / "providers" / module.task_id / "bundle.json", provider_data)
             prompt = self.prompt_builder.build(module, context)
             for attempt in range(1, 3):
@@ -105,9 +115,23 @@ class DailyReportPipeline:
         run_dir.mkdir(parents=True, exist_ok=False)
         _write_json(run_dir / "run_context.json", context.model_dump(mode="json"))
 
+        macro_module = next((module for module in self.modules if module.task_id == "macro_market"), None)
+        if macro_module is None:
+            all_modules = load_module_configs(self.project_root / "app" / "modules")
+            macro_module = next(module for module in all_modules if module.task_id == "macro_market")
+        shared_context = {
+            "market": self.providers.market.get_task_data(macro_module, context.scheduled_for),
+            "news": self.providers.news.get_task_data(macro_module, context.window.start_at, context.window.end_at),
+            "macro": self.providers.macro.get_task_data(macro_module, context.window.start_at, context.window.end_at),
+        }
+        _write_json(run_dir / "raw" / "providers" / "shared_context.json", shared_context)
+
         result_by_task: dict[str, ResearchTaskResult] = {}
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(self.modules))) as executor:
-            future_map = {executor.submit(self._run_task, module, context, run_dir): module for module in self.modules}
+            future_map = {
+                executor.submit(self._run_task, module, context, run_dir, shared_context): module
+                for module in self.modules
+            }
             for future in as_completed(future_map):
                 module = future_map[future]
                 result_by_task[module.task_id] = future.result()

@@ -450,21 +450,19 @@ def validate_result(
             observation.unit = str(candidate["unit"])
             observation.as_of = datetime.fromisoformat(str(candidate["as_of"]).replace("Z", "+00:00"))
     configured_instruments = {item.instrument_id for item in module.instruments}
-    for scenario in result.scenario_analyses:
-        if scenario.instrument_id not in configured_instruments:
-            raise ValidationFailure(f"scenario has unknown instrument: {scenario.instrument_id}")
-        if set(scenario.source_ids) - source_ids:
-            raise ValidationFailure(f"scenario has unknown source: {scenario.instrument_id}")
+    for analysis in result.investment_analyses:
+        if analysis.instrument_id not in configured_instruments:
+            raise ValidationFailure(f"investment analysis has unknown instrument: {analysis.instrument_id}")
+        if set(analysis.source_ids) - source_ids:
+            raise ValidationFailure(f"investment analysis has unknown source: {analysis.instrument_id}")
+    analysis_instruments = [item.instrument_id for item in result.investment_analyses]
+    if len(analysis_instruments) != len(set(analysis_instruments)):
+        raise ValidationFailure("duplicate investment analysis")
     if market_signal_candidates:
         reported_signals = {(item.instrument_id, item.metric_id) for item in result.market_observations}
         missing_signals = set(market_signal_candidates) - reported_signals
         if missing_signals:
             raise ValidationFailure(f"market observations missing: {sorted(missing_signals)}")
-        signal_instruments = {instrument_id for instrument_id, _ in market_signal_candidates}
-        scenario_instruments = {item.instrument_id for item in result.scenario_analyses}
-        missing_scenarios = signal_instruments - scenario_instruments
-        if missing_scenarios:
-            raise ValidationFailure(f"scenario analyses missing: {sorted(missing_scenarios)}")
 
     for observation in result.macro_observations:
         if set(observation.source_ids) - source_ids:
@@ -533,8 +531,8 @@ def validate_result(
         referenced_source_ids.update(observation.source_ids)
     for observation in result.market_observations:
         referenced_source_ids.update(observation.source_ids)
-    for scenario in result.scenario_analyses:
-        referenced_source_ids.update(scenario.source_ids)
+    for analysis in result.investment_analyses:
+        referenced_source_ids.update(analysis.source_ids)
     for metric in result.relative_metrics:
         referenced_source_ids.update(metric.source_ids)
     for check in result.research_checks:

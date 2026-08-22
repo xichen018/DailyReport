@@ -4,7 +4,7 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from app.reporting.renderer import _html_rationale, _html_report, _rationale_sections
-from app.schemas.models import MarketObservation, ResearchTaskResult, RunContext, ScenarioAnalysis, Source, TaskStatus, Window
+from app.schemas.models import Impact, InstrumentResult, InvestmentAnalysis, MarketObservation, NewsItem, PricePoint, ResearchTaskResult, RunContext, Source, TaskStatus, Window
 
 
 class RendererTests(unittest.TestCase):
@@ -27,7 +27,7 @@ class RendererTests(unittest.TestCase):
         self.assertIn("<strong>投资含义：</strong>", rendered)
         self.assertNotIn("rationale-structured", rendered)
 
-    def test_market_structure_and_scenario_are_rendered(self) -> None:
+    def test_investment_analysis_is_rendered(self) -> None:
         now = datetime(2026, 8, 22, 8, 15, tzinfo=ZoneInfo("Asia/Hong_Kong"))
         window = Window(timezone="Asia/Hong_Kong", start_at=now.replace(day=21), end_at=now)
         context = RunContext(run_id="test", timezone="Asia/Hong_Kong", scheduled_for=now, window=window, market_dates={})
@@ -35,16 +35,32 @@ class RendererTests(unittest.TestCase):
         result = ResearchTaskResult(
             run_id="test", request_id="req", task_id="cross_asset", title_zh="加密资产与能源",
             status=TaskStatus.SUCCESS, window=window, sources=[source],
+            instruments=[InstrumentResult(
+                instrument_id="bitcoin_binance", symbol="BTCUSDT", name="Bitcoin / Tether",
+                asset_class="crypto", exchange="BINANCE", currency="USDT", trading_date=now.date(),
+                prices=[PricePoint(kind="latest_close", value=Decimal("76683.20"), previous_value=Decimal("78034.17"), change_value=Decimal("-1350.97"), change_pct=Decimal("-1.73"), currency="USDT", as_of=now, source_ids=["src_1"])],
+                news=[NewsItem(headline="现货需求变化", published_at=now, summary_zh="已确认事实。", impact=Impact.NEGATIVE, rationale_zh="该事实削弱短期需求。", source_ids=["src_1"])],
+            )],
             market_observations=[MarketObservation(metric_id="btc_rsi_14d", instrument_id="bitcoin_binance", label="BTC 14日 RSI", value=Decimal("58"), unit="index", as_of=now, interpretation_zh="动量未极端。", source_ids=["src_1"])],
-            scenario_analyses=[ScenarioAnalysis(instrument_id="bitcoin_binance", current_regime_zh="区间。", base_case_zh="维持。", alternative_case_zh="破位。", decision_points_zh="观察RSI。", invalidation_zh="结构反转。", evidence_limits_zh="缺ETF数据。", source_ids=["src_1"])],
+            investment_analyses=[InvestmentAnalysis(instrument_id="bitcoin_binance", investment_view_zh="短期更可能回撤。", key_evidence_zh=["高位放量回落支持短期回撤判断。", "长期均线仍向上，因此不是中期反转。"], key_variable_zh="若放量跌破20日均线，回撤可能扩大。", source_ids=["src_1"])],
         )
 
         rendered = _html_report(context, [result], "real")
 
-        self.assertIn("市场结构与资金指标", rendered)
-        self.assertIn("情景研判", rendered)
-        self.assertIn("缺ETF数据", rendered)
-        self.assertIn("bitcoin_binance 情景研判", rendered)
+        self.assertNotIn("市场结构与资金指标", rendered)
+        self.assertIn("<span>A</span>当前判断", rendered)
+        self.assertIn("<span>B</span>关键依据", rendered)
+        self.assertIn("<span>C</span>重要事件", rendered)
+        self.assertIn("<span>D</span>观点更新", rendered)
+        self.assertLess(rendered.index("当前判断"), rendered.index("重要事件"))
+        self.assertLess(rendered.index("重要事件"), rendered.index("观点更新"))
+        self.assertNotIn("<th>上一收盘</th>", rendered)
+        self.assertNotIn("<th>涨跌</th>", rendered)
+        self.assertNotIn("一句话判断", rendered)
+        self.assertNotIn("偏强怎么看", rendered)
+        self.assertNotIn("转弱怎么看", rendered)
+        self.assertNotIn("裁决条件", rendered)
+        self.assertNotIn("失效条件", rendered)
 
 
 if __name__ == "__main__":

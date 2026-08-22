@@ -131,14 +131,11 @@ class MarketObservation(StrictModel):
     source_ids: list[str] = Field(min_length=1)
 
 
-class ScenarioAnalysis(StrictModel):
+class InvestmentAnalysis(StrictModel):
     instrument_id: str
-    current_regime_zh: str
-    base_case_zh: str
-    alternative_case_zh: str
-    decision_points_zh: str
-    invalidation_zh: str
-    evidence_limits_zh: str
+    investment_view_zh: str
+    key_evidence_zh: list[str] = Field(min_length=1, max_length=3)
+    key_variable_zh: str
     source_ids: list[str] = Field(min_length=1)
 
 
@@ -209,7 +206,7 @@ class ResearchTaskResult(StrictModel):
     section_news: list[NewsItem] = Field(default_factory=list)
     macro_observations: list[MacroObservation] = Field(default_factory=list)
     market_observations: list[MarketObservation] = Field(default_factory=list)
-    scenario_analyses: list[ScenarioAnalysis] = Field(default_factory=list)
+    investment_analyses: list[InvestmentAnalysis] = Field(default_factory=list)
     relative_metrics: list[RelativeMetric] = Field(default_factory=list)
     research_checks: list[ResearchCheck] = Field(default_factory=list)
     sources: list[Source] = Field(default_factory=list)
