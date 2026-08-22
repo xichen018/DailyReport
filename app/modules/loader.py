@@ -34,6 +34,8 @@ class ModuleConfig:
     search_terms_en: tuple[str, ...]
     background_search_terms_zh: tuple[str, ...]
     background_search_terms_en: tuple[str, ...]
+    upcoming_event_terms_zh: tuple[str, ...]
+    upcoming_event_terms_en: tuple[str, ...]
     no_news_policy: str
     background_policy: str
     instruments: tuple[InstrumentConfig, ...]
@@ -78,6 +80,8 @@ def load_module_configs(directory: Path) -> list[ModuleConfig]:
                 search_terms_en=tuple(data.get("search_terms_en", [])),
                 background_search_terms_zh=tuple(data.get("background_search_terms_zh", [])),
                 background_search_terms_en=tuple(data.get("background_search_terms_en", [])),
+                upcoming_event_terms_zh=tuple(data.get("upcoming_event_terms_zh", [])),
+                upcoming_event_terms_en=tuple(data.get("upcoming_event_terms_en", [])),
                 no_news_policy=data.get("no_news_policy", "窗口内无重大新闻时明确记录无重大新闻"),
                 background_policy=data.get(
                     "background_policy",

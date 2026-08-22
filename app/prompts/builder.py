@@ -35,6 +35,10 @@ class PromptBuilder:
                     "zh": list(module.background_search_terms_zh),
                     "en": list(module.background_search_terms_en),
                 },
+                "upcoming_event_terms": {
+                    "zh": list(module.upcoming_event_terms_zh),
+                    "en": list(module.upcoming_event_terms_en),
+                },
                 "no_news_policy": module.no_news_policy,
                 "background_policy": module.background_policy,
                 "required_research_checks": required_research_check_plan(module),

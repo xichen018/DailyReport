@@ -10,6 +10,8 @@ triggered_checks = []
 source_requirements = ["Google News RSS 必查（1772.HK、6166.HK，可补查002460.SZ）；GDELT 与 Marketaux 仅作可选增强", "中英文关键词检索", "股票价格以 Yahoo Chart API 为可接受主来源；腾讯行情用于增强核验，失败时仍须输出 Yahoo 价格并注明来源", "每条事实记录媒体名或机构名及 URL"]
 search_terms_zh = ["赣锋锂业", "剑桥科技 光模块", "锂价 锂电产业链", "AI算力 光模块"]
 search_terms_en = ["Ganfeng Lithium", "CIG Shanghai 6166", "lithium battery supply chain", "optical module AI compute demand"]
+upcoming_event_terms_zh = ["未来一周 赣锋锂业 剑桥科技 财报 股东大会 事件 日期"]
+upcoming_event_terms_en = ["next week Ganfeng Lithium CIG Shanghai earnings event date"]
 no_news_policy = "逐只股票完成全部新闻分类与行业专题检查；窗口内确无重要新闻时明确写无重大新闻"
 background_policy = "可简要补充窗口外但近几天仍在发酵的重要背景；必须标注原始日期并设置 outside_window=true"
 

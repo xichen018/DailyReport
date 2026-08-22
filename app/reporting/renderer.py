@@ -170,6 +170,19 @@ def _previous_close(price: object, prices: list[object]) -> object | None:
     return previous.value if previous is not None else None
 
 
+def _upcoming_event_entries(results: list[ResearchTaskResult]) -> list[tuple[ResearchTaskResult, object]]:
+    entries: list[tuple[ResearchTaskResult, object]] = []
+    seen: set[tuple[str, str]] = set()
+    for result in results:
+        for event in result.upcoming_events:
+            key = (event.event_at.isoformat(), re.sub(r"\W+", "", event.title_zh).casefold())
+            if key in seen:
+                continue
+            seen.add(key)
+            entries.append((result, event))
+    return sorted(entries, key=lambda item: item[1].event_at)
+
+
 def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mode: str) -> str:
     result_list = list(results)
     delivered = sum(item.status != TaskStatus.FAILED for item in result_list)
@@ -177,6 +190,7 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
     news_items = [item for instrument in instruments for item in instrument.news] + [
         item for result in result_list for item in result.section_news
     ]
+    upcoming_entries = _upcoming_event_entries(result_list)
     snapshot_rows: list[str] = []
     for instrument in instruments:
         if not instrument.prices:
@@ -321,13 +335,31 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
             + f"</div>{''.join(body)}</section>"
         )
 
+    upcoming_body: list[str] = []
+    upcoming_section_number = len(result_list) + 1
+    for index, (owner, event) in enumerate(upcoming_entries, start=1):
+        affected = "、".join(event.affected_assets_zh)
+        source_links = _html_source_links(owner, event.source_ids)
+        upcoming_body.append(
+            f"<article><div class='event-line'><span class='news-index'>{upcoming_section_number}.{index}</span>"
+            f"<h4>{html.escape(event.event_at.strftime('%m月%d日 %H:%M'))} | {html.escape(event.title_zh)}</h4></div>"
+            f"<div class='news-meta'><span>影响：{html.escape(affected)}</span><span class='news-source'>来源：{source_links}</span></div>"
+            f"<p>{html.escape(event.why_it_matters_zh)}</p></article>"
+        )
+    if not upcoming_body:
+        upcoming_body.append("<p class='no-news'>未来七天暂未取得日期与来源均可核实的重大事件。</p>")
+    sections.append(
+        f"<section><div class='section-head'><div><span class='section-no'>{upcoming_section_number}</span><h2>未来一周关键事件</h2></div></div>"
+        f"<div class='news'>{''.join(upcoming_body)}</div></section>"
+    )
+
     mode_label = "正式研究" if mode == "real" else "设计预览"
     footer_label = "结构化投资研究 · 数据截至报告所示时间" if mode == "real" else "版式与流程预览 · 非实时投资依据"
     return f"""<!doctype html>
 <html lang="zh-Hans"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>金融日报 {context.scheduled_for.date().isoformat()}</title>
 <style>
-:root{{--ink:#182230;--muted:#667085;--line:#dfe3e8;--soft:#f6f8fa;--accent:#176b5b;--accent-soft:#e9f3f0;--up:#067647;--down:#b42318;--amber:#9c6500;--paper:#fff}}
+:root{{--ink:#182230;--muted:#667085;--line:#dfe3e8;--soft:#f6f8fa;--accent:#24466f;--accent-soft:#eef2f6;--up:#067647;--down:#b42318;--amber:#9c6500;--paper:#fff}}
 *{{box-sizing:border-box}} html{{background:#eef1f3}} body{{margin:0;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;font-variant-numeric:tabular-nums;letter-spacing:0}}
 main{{max-width:1040px;margin:24px auto;background:var(--paper);padding:46px 54px 64px;box-shadow:0 1px 4px rgba(16,24,40,.08)}}
 .masthead{{border-top:5px solid var(--ink);padding-top:22px;border-bottom:1px solid var(--ink);padding-bottom:18px}} .brand-row{{display:flex;justify-content:space-between;align-items:flex-start;gap:24px}}
@@ -350,7 +382,7 @@ footer{{margin-top:28px;padding-top:14px;border-top:1px solid var(--ink);display
 </style></head><body><main>
 <header class="masthead"><div class="brand-row"><div><div class="eyebrow">Daily Investment Intelligence</div><h1>金融市场日报</h1></div><div class="edition">{context.scheduled_for.strftime('%Y年%m月%d日')}<br>香港时间 {context.scheduled_for.strftime('%H:%M')}<br><span class="mode">{mode_label}</span></div></div>
 <div class="meta-strip"><span><strong>研究窗口</strong> {context.window.start_at.strftime('%m-%d %H:%M')} - {context.window.end_at.strftime('%m-%d %H:%M')} HKT</span><span><strong>覆盖</strong> 港股 · 美股 · 加密资产 · 能源 · 宏观</span></div></header>
-<div class="brief"><h2>Executive Brief</h2><div class="brief-grid"><div class="brief-item"><span>研究覆盖</span><strong>{len(result_list)} 个板块</strong></div><div class="brief-item"><span>覆盖资产</span><strong>{len(instruments)} 项</strong></div><div class="brief-item"><span>重点事件</span><strong>{len(news_items)} 项</strong></div></div>
+<div class="brief"><h2>Executive Brief</h2><div class="brief-grid"><div class="brief-item"><span>研究覆盖</span><strong>{len(result_list)} 个板块</strong></div><div class="brief-item"><span>覆盖资产</span><strong>{len(instruments)} 项</strong></div><div class="brief-item"><span>重点事件</span><strong>{len(news_items) + len(upcoming_entries)} 项</strong></div></div>
 <div class="snapshot"><h3>市场快照</h3><table><thead><tr><th>标的</th><th>价格</th><th>涨跌幅</th><th>交易日</th><th>来源</th></tr></thead><tbody>{''.join(snapshot_rows)}</tbody></table></div></div>
 {''.join(sections)}
 <footer><span>{footer_label}</span><span>生成时间 {context.scheduled_for.isoformat()}</span></footer>
@@ -385,12 +417,12 @@ def _pdf_styles() -> tuple[str, dict[str, ParagraphStyle]]:
     font_name = _register_pdf_font()
     base = getSampleStyleSheet()
     return font_name, {
-        "eyebrow": ParagraphStyle("Eyebrow", parent=base["BodyText"], fontName=font_name, fontSize=7.5, leading=10, textColor=colors.HexColor("#176B5B"), spaceAfter=3),
+        "eyebrow": ParagraphStyle("Eyebrow", parent=base["BodyText"], fontName=font_name, fontSize=7.5, leading=10, textColor=colors.HexColor("#24466F"), spaceAfter=3),
         "title": ParagraphStyle("ChineseTitle", parent=base["Title"], fontName=font_name, fontSize=24, leading=29, textColor=colors.HexColor("#182230"), alignment=TA_LEFT, spaceAfter=9),
         "meta": ParagraphStyle("ChineseMeta", parent=base["BodyText"], fontName=font_name, fontSize=8.5, leading=13, textColor=colors.HexColor("#667085")),
-        "h2": ParagraphStyle("ChineseH2", parent=base["Heading2"], fontName=font_name, fontSize=15, leading=20, textColor=colors.HexColor("#176B5B"), spaceBefore=12, spaceAfter=8),
+        "h2": ParagraphStyle("ChineseH2", parent=base["Heading2"], fontName=font_name, fontSize=15, leading=20, textColor=colors.HexColor("#24466F"), spaceBefore=12, spaceAfter=8),
         "h3": ParagraphStyle("ChineseH3", parent=base["Heading3"], fontName=font_name, fontSize=11, leading=15, spaceBefore=9, spaceAfter=6, keepWithNext=True, backColor=colors.HexColor("#F2F4F7"), borderPadding=(5, 7, 5, 7)),
-        "h4": ParagraphStyle("ChineseH4", parent=base["Heading4"], fontName=font_name, fontSize=9, leading=13, textColor=colors.HexColor("#176B5B"), spaceBefore=7, spaceAfter=4, keepWithNext=True),
+        "h4": ParagraphStyle("ChineseH4", parent=base["Heading4"], fontName=font_name, fontSize=9, leading=13, textColor=colors.HexColor("#24466F"), spaceBefore=7, spaceAfter=4, keepWithNext=True),
         "body": ParagraphStyle("ChineseBody", parent=base["BodyText"], fontName=font_name, fontSize=9, leading=14, spaceAfter=5),
         "rationale": ParagraphStyle("ChineseRationale", parent=base["BodyText"], fontName=font_name, fontSize=8.5, leading=13, leftIndent=8, borderColor=colors.HexColor("#D0D5DD"), borderWidth=0, borderLeftWidth=1.5, borderPadding=(0, 0, 0, 7), textColor=colors.HexColor("#344054"), spaceAfter=4),
         "small": ParagraphStyle("ChineseSmall", parent=base["BodyText"], fontName=font_name, fontSize=7.5, leading=11, textColor=colors.HexColor("#667085"), spaceAfter=3),
@@ -416,7 +448,8 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
     result_list = list(results)
     delivered = sum(item.status != TaskStatus.FAILED for item in result_list)
     instruments = [instrument for result in result_list for instrument in result.instruments]
-    news_count = sum(len(instrument.news) for instrument in instruments) + sum(len(result.section_news) for result in result_list)
+    upcoming_entries = _upcoming_event_entries(result_list)
+    news_count = sum(len(instrument.news) for instrument in instruments) + sum(len(result.section_news) for result in result_list) + len(upcoming_entries)
     doc = SimpleDocTemplate(str(path), pagesize=A4, leftMargin=17 * mm, rightMargin=17 * mm, topMargin=20 * mm, bottomMargin=17 * mm, title="金融市场日报")
 
     def decorate_page(canvas: object, document: object) -> None:
@@ -561,6 +594,19 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
         for metric in result.relative_metrics:
             story.append(Paragraph(f"{metric.numerator}/{metric.denominator}：{html.escape(metric.interpretation_zh)} [{html.escape(_source_refs(metric.source_ids, source_labels))}]", styles["body"]))
         story.append(Spacer(1, 4 * mm))
+    upcoming_section_number = len(result_list) + 1
+    story.append(Paragraph(f"{upcoming_section_number}  未来一周关键事件", styles["h2"]))
+    if upcoming_entries:
+        for index, (owner, event) in enumerate(upcoming_entries, start=1):
+            affected = "、".join(event.affected_assets_zh)
+            source_links = _pdf_source_links(owner, event.source_ids)
+            story.append(Paragraph(f"{upcoming_section_number}.{index}  |  {event.event_at.strftime('%m月%d日 %H:%M')}  |  {html.escape(event.title_zh)}", styles["h4"]))
+            story.append(Paragraph(f"影响标的：{html.escape(affected)}", styles["small"]))
+            story.append(Paragraph(html.escape(event.why_it_matters_zh), styles["body"]))
+            if source_links:
+                story.append(Paragraph(f"来源：{source_links}", styles["small"]))
+    else:
+        story.append(Paragraph("未来七天暂未取得日期与来源均可核实的重大事件。", styles["meta"]))
     doc.build(story, onFirstPage=decorate_page, onLaterPages=decorate_page)
 
 

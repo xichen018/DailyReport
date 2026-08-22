@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -209,7 +209,9 @@ def validate_result(
         google_queries = [
             item
             for item in provider_data.get("news", {}).get("queries", [])
-            if item.get("provider") == "google-news-rss" and not item.get("background", False)
+            if item.get("provider") == "google-news-rss"
+            and not item.get("background", False)
+            and not item.get("upcoming", False)
         ]
         mandatory_news_completed = bool(google_queries) and all(item.get("status") == "success" for item in google_queries)
         if mandatory_news_completed:
@@ -431,6 +433,23 @@ def validate_result(
 
     result.section_news = validated_news(result.section_news, "section_news")
 
+    upcoming_seen: set[tuple[datetime, str]] = set()
+    validated_upcoming = []
+    for event in sorted(result.upcoming_events, key=lambda item: item.event_at):
+        missing = set(event.source_ids) - source_ids
+        if missing:
+            raise ValidationFailure(f"upcoming event has unknown source ids: {sorted(missing)}")
+        if not result.window.end_at < event.event_at <= result.window.end_at + timedelta(days=7):
+            raise ValidationFailure(f"upcoming event outside next-seven-day window: {event.title_zh}")
+        urls = {canonical_url(str(source_map[sid].url)) for sid in event.source_ids}
+        if provider_data is not None and not urls.intersection(news_urls):
+            raise ValidationFailure(f"upcoming event URL not found in provider data: {event.title_zh}")
+        key = (event.event_at, normalized_headline(event.title_zh))
+        if key not in upcoming_seen:
+            upcoming_seen.add(key)
+            validated_upcoming.append(event)
+    result.upcoming_events = validated_upcoming
+
     for observation in result.market_observations:
         if set(observation.source_ids) - source_ids:
             raise ValidationFailure(f"market observation has unknown source: {observation.metric_id}")
@@ -527,6 +546,8 @@ def validate_result(
             referenced_source_ids.update(news.source_ids)
     for news in result.section_news:
         referenced_source_ids.update(news.source_ids)
+    for event in result.upcoming_events:
+        referenced_source_ids.update(event.source_ids)
     for observation in result.macro_observations:
         referenced_source_ids.update(observation.source_ids)
     for observation in result.market_observations:

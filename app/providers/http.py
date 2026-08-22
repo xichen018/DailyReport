@@ -459,13 +459,15 @@ class FreeNewsProvider:
                 queries.append({"provider": "gdelt", "scope": module.task_id, "status": "failed", "returned": 0})
 
         search_queries = [
-            *((query_text, "zh", False) for query_text in module.search_terms_zh),
-            *((query_text, "en", False) for query_text in module.search_terms_en),
-            *((query_text, "zh", True) for query_text in module.background_search_terms_zh),
-            *((query_text, "en", True) for query_text in module.background_search_terms_en),
+            *((query_text, "zh", False, False) for query_text in module.search_terms_zh),
+            *((query_text, "en", False, False) for query_text in module.search_terms_en),
+            *((query_text, "zh", True, False) for query_text in module.background_search_terms_zh),
+            *((query_text, "en", True, False) for query_text in module.background_search_terms_en),
+            *((query_text, "zh", False, True) for query_text in module.upcoming_event_terms_zh),
+            *((query_text, "en", False, True) for query_text in module.upcoming_event_terms_en),
         ]
-        for query_text, language, background_candidate in search_queries:
-            lookback_days = 14 if background_candidate else 2
+        for query_text, language, background_candidate, upcoming_candidate in search_queries:
+            lookback_days = 14 if background_candidate or upcoming_candidate else 2
             windowed_query = f"({query_text}) when:{lookback_days}d"
             locale = (
                 {"hl": "en-US", "gl": "US", "ceid": "US:en"}
@@ -478,7 +480,8 @@ class FreeNewsProvider:
                 returned = root.findall("./channel/item")[:15]
                 queries.append({
                     "provider": "google-news-rss", "query": query_text, "language": language,
-                    "background": background_candidate, "status": "success", "returned": len(returned),
+                    "background": background_candidate, "upcoming": upcoming_candidate,
+                    "status": "success", "returned": len(returned),
                 })
                 for item in returned:
                     articles.append({
@@ -486,12 +489,14 @@ class FreeNewsProvider:
                         "published_at": _iso_published_at(item.findtext("pubDate")), "publisher": item.findtext("source") or "Google News",
                         "url": item.findtext("link"), "provider": "google-news-rss", "query": query_text,
                         "language": language, "background_candidate": background_candidate,
+                        "upcoming_candidate": upcoming_candidate,
                     })
             except Exception as exc:
                 errors.append(_error("google-news-rss", exc))
                 queries.append({
                     "provider": "google-news-rss", "query": query_text, "language": language,
-                    "background": background_candidate, "status": "failed", "returned": 0,
+                    "background": background_candidate, "upcoming": upcoming_candidate,
+                    "status": "failed", "returned": 0,
                 })
         window_articles = []
         for article in articles:
@@ -499,7 +504,7 @@ class FreeNewsProvider:
             if not published_at:
                 continue
             published = datetime.fromisoformat(str(published_at).replace("Z", "+00:00"))
-            article_start = end_at - timedelta(days=14) if article.get("background_candidate") else start_at
+            article_start = end_at - timedelta(days=14) if article.get("background_candidate") or article.get("upcoming_candidate") else start_at
             if article_start <= published.astimezone(start_at.tzinfo) <= end_at:
                 window_articles.append(article)
         return {

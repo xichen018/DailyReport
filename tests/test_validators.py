@@ -11,7 +11,7 @@ from app.modules.loader import load_module_configs
 from app.orchestrator.context import build_run_context
 from app.prompts.builder import PromptBuilder
 from app.providers.mock import MockProviderBundle
-from app.schemas.models import CheckStatus, ResearchTaskResult
+from app.schemas.models import CheckStatus, ResearchTaskResult, UpcomingEvent
 from app.validators.result import ValidationFailure, canonical_url, validate_result
 
 
@@ -99,6 +99,31 @@ class ValidatorTests(unittest.TestCase):
         broken.instruments[0].news[0].published_at = self.context.window.end_at + timedelta(hours=1)
         with self.assertRaises(ValidationFailure):
             validate_result(broken, self.module)
+
+    def test_upcoming_event_must_be_within_seven_days_and_source_backed(self) -> None:
+        result = ResearchTaskResult.model_validate(self.raw)
+        news_source_id = result.instruments[0].news[0].source_ids[0]
+        result.upcoming_events = [UpcomingEvent(
+            event_at=self.context.window.end_at + timedelta(days=3),
+            title_zh="公司已公告的投资者活动",
+            affected_assets_zh=["港股"],
+            why_it_matters_zh="活动可能提供经营指引更新。",
+            source_ids=[news_source_id],
+        )]
+
+        validated = validate_result(result, self.module, self.provider_data)
+
+        self.assertEqual(len(validated.upcoming_events), 1)
+        result = ResearchTaskResult.model_validate(self.raw)
+        result.upcoming_events = [UpcomingEvent(
+            event_at=self.context.window.end_at + timedelta(days=8),
+            title_zh="超出前瞻窗口的活动",
+            affected_assets_zh=["港股"],
+            why_it_matters_zh="不应进入本期报告。",
+            source_ids=[news_source_id],
+        )]
+        with self.assertRaisesRegex(ValidationFailure, "outside next-seven-day window"):
+            validate_result(result, self.module, self.provider_data)
 
     def test_missing_mandatory_research_check_is_rejected(self) -> None:
         broken = ResearchTaskResult.model_validate(self.raw)

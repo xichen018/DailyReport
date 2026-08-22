@@ -87,6 +87,14 @@ class NewsItem(StrictModel):
     outside_window: bool = False
 
 
+class UpcomingEvent(StrictModel):
+    event_at: datetime
+    title_zh: str = Field(min_length=1)
+    affected_assets_zh: list[str] = Field(min_length=1)
+    why_it_matters_zh: str = Field(min_length=1)
+    source_ids: list[str] = Field(min_length=1)
+
+
 class InstrumentResult(StrictModel):
     instrument_id: str
     symbol: str
@@ -204,6 +212,7 @@ class ResearchTaskResult(StrictModel):
     window: Window
     instruments: list[InstrumentResult] = Field(default_factory=list)
     section_news: list[NewsItem] = Field(default_factory=list)
+    upcoming_events: list[UpcomingEvent] = Field(default_factory=list)
     macro_observations: list[MacroObservation] = Field(default_factory=list)
     market_observations: list[MarketObservation] = Field(default_factory=list)
     investment_analyses: list[InvestmentAnalysis] = Field(default_factory=list)

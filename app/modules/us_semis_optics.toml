@@ -10,6 +10,8 @@ triggered_checks = ["输入提供盘前或盘后行情且涨跌幅绝对值超�
 source_requirements = ["Google News RSS 对 MU 和 COHR 均为必查；GDELT 与 Marketaux 仅作可选增强", "中英文关键词检索", "股票价格以 Yahoo Chart API 为可接受主来源；独立第二行情源仅作增强，失败时仍须输出 Yahoo 价格并注明来源", "每条事实记录媒体名或机构名及 URL"]
 search_terms_zh = ["美光科技 HBM 存储价格", "Coherent 光模块 数据中心光互连", "AI资本开支 数据中心"]
 search_terms_en = ["Micron MU stock news", "Coherent COHR news", "HBM memory DRAM NAND prices", "optical modules datacenter interconnect AI capex"]
+upcoming_event_terms_zh = ["未来一周 美光 Coherent 财报 投资者活动 日期"]
+upcoming_event_terms_en = ["next week Micron Coherent earnings investor event date"]
 no_news_policy = "逐只股票完成全部分类和行业专题检查；窗口内确无重要新闻时明确写无重大新闻"
 background_policy = "只补充窗口外但仍在发酵的近期重要背景；标注原始日期并设置 outside_window=true"
 

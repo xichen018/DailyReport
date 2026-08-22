@@ -66,6 +66,8 @@ class ModuleConfigTests(unittest.TestCase):
             self.assertTrue(module.source_requirements, module.task_id)
             self.assertTrue(module.search_terms_zh, module.task_id)
             self.assertTrue(module.search_terms_en, module.task_id)
+            self.assertTrue(module.upcoming_event_terms_zh, module.task_id)
+            self.assertTrue(module.upcoming_event_terms_en, module.task_id)
             self.assertIn("无重大新闻", module.no_news_policy)
         self.assertTrue(any("超过1%" in item for item in by_id["us_semis_optics"].triggered_checks))
         self.assertTrue(any("明显下跌" in item for item in by_id["us_platform_media"].triggered_checks))
