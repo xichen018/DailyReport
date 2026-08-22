@@ -16,7 +16,7 @@ class ModuleConfigTests(unittest.TestCase):
         self.assertEqual(len({module.task_id for module in modules}), 6)
         by_id = {module.task_id: module for module in modules}
         self.assertEqual([item.symbol for item in by_id["hk_equities"].instruments], ["1772.HK", "6166.HK"])
-        self.assertEqual([item.symbol for item in by_id["cross_asset"].instruments], ["BTCUSDT", "CL1"])
+        self.assertEqual([item.symbol for item in by_id["cross_asset"].instruments], ["BTCUSDT", "GC=F", "CL1"])
 
     def test_attachment_news_categories_are_explicit_and_complete(self) -> None:
         by_id = {item.task_id: item for item in load_module_configs(ROOT / "app" / "modules")}

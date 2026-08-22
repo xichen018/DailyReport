@@ -4,6 +4,7 @@ import json
 import os
 import unittest
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -100,6 +101,22 @@ class RealIntegrationContractTests(unittest.TestCase):
         by_id = {item["metric_id"]: item for item in signals}
         self.assertNotEqual(by_id["btc_30d_high"]["value"], "99999.00")
         self.assertEqual(by_id["btc_30d_high"]["value"], "300.00")
+
+    def test_structural_levels_stay_on_the_correct_side_of_price(self) -> None:
+        closes = [Decimal("100")] * 70
+        highs = [Decimal("101")] * 70
+        lows = [Decimal("99")] * 70
+        highs[60] = Decimal("110")
+        lows[55] = Decimal("90")
+
+        supports, resistances = FreeMarketDataProvider._structural_levels(closes, highs, lows)
+
+        self.assertTrue(supports)
+        self.assertTrue(resistances)
+        self.assertTrue(all(value < closes[-1] for value in supports))
+        self.assertTrue(all(value > closes[-1] for value in resistances))
+        self.assertLessEqual(len(supports), 2)
+        self.assertLessEqual(len(resistances), 2)
 
     def test_tencent_hk_response_is_normalized(self) -> None:
         fields = [""] * 33

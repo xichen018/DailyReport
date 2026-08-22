@@ -100,6 +100,44 @@ class FreeMarketDataProvider:
             return Decimal("100")
         return Decimal("100") - Decimal("100") / (Decimal("1") + gains / losses)
 
+    @staticmethod
+    def _structural_levels(
+        closes: list[Decimal],
+        highs: list[Decimal],
+        lows: list[Decimal],
+    ) -> tuple[list[Decimal], list[Decimal]]:
+        """Return nearest confirmed support and resistance candidates."""
+        current = closes[-1]
+        start = max(2, len(closes) - 62)
+        pivot_highs = [
+            highs[index]
+            for index in range(start, len(closes) - 2)
+            if highs[index] == max(highs[index - 2:index + 3])
+        ]
+        pivot_lows = [
+            lows[index]
+            for index in range(start, len(closes) - 2)
+            if lows[index] == min(lows[index - 2:index + 3])
+        ]
+        averages = [sum(closes[-period:]) / period for period in (20, 50) if len(closes) >= period]
+        supports = [*pivot_lows, min(lows[-30:]), *(value for value in averages if value < current)]
+        resistances = [*pivot_highs, max(highs[-30:]), *(value for value in averages if value > current)]
+
+        def nearest(values: list[Decimal], reverse: bool) -> list[Decimal]:
+            ordered = sorted(
+                {value for value in values if (value < current if reverse else value > current)},
+                reverse=reverse,
+            )
+            selected: list[Decimal] = []
+            for value in ordered:
+                if not selected or abs(value - selected[-1]) / current >= Decimal("0.005"):
+                    selected.append(value)
+                if len(selected) == 2:
+                    break
+            return selected
+
+        return nearest(supports, True), nearest(resistances, False)
+
     def _binance_structure(self) -> list[dict[str, Any]]:
         url = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=220"
         rows = json.loads(_get(url, self.timeout))
@@ -108,6 +146,8 @@ class FreeMarketDataProvider:
         if len(rows) < 201:
             raise ValueError("insufficient Binance daily bars for BTC structure")
         closes = [Decimal(str(row[4])) for row in rows]
+        highs = [Decimal(str(row[2])) for row in rows]
+        lows = [Decimal(str(row[3])) for row in rows]
         volumes = [Decimal(str(row[5])) for row in rows]
         as_of = datetime.fromtimestamp(rows[-1][6] / 1000, timezone.utc).isoformat()
         signals = []
@@ -126,6 +166,11 @@ class FreeMarketDataProvider:
         add("btc_30d_low", "BTC 近30日最低收盘", min(closes[-30:]), "USDT")
         average_volume = sum(volumes[-21:-1]) / 20
         add("btc_volume_vs_20d", "BTC 当日成交量相对20日均量", volumes[-1] / average_volume, "ratio")
+        supports, resistances = self._structural_levels(closes, highs, lows)
+        for index, value in enumerate(supports, start=1):
+            add(f"btc_structural_support_{index}", f"BTC 结构支撑 {index}", value, "USDT")
+        for index, value in enumerate(resistances, start=1):
+            add(f"btc_structural_resistance_{index}", f"BTC 结构压力 {index}", value, "USDT")
         return signals
 
     def _binance_derivatives(self) -> list[dict[str, Any]]:
@@ -210,16 +255,22 @@ class FreeMarketDataProvider:
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range=1y&interval=1d&events=history"
         result = json.loads(_get(url, self.timeout))["chart"]["result"][0]
         quotes = result["indicators"]["quote"][0]
+        quote_highs = quotes.get("high") or quotes["close"]
+        quote_lows = quotes.get("low") or quotes["close"]
         bars = [
-            (ts, Decimal(str(close)), Decimal(str(volume)))
-            for ts, close, volume in zip(result["timestamp"], quotes["close"], quotes.get("volume", []))
-            if close is not None and volume is not None
+            (ts, Decimal(str(close)), Decimal(str(high)), Decimal(str(low)), Decimal(str(volume or 0)))
+            for ts, close, high, low, volume in zip(
+                result["timestamp"], quotes["close"], quote_highs, quote_lows, quotes.get("volume", [])
+            )
+            if close is not None and high is not None and low is not None
             and datetime.fromtimestamp(ts, timezone.utc).astimezone(market_timezone).date() <= closed_session
         ]
         if len(bars) < 31:
             raise ValueError(f"insufficient Yahoo daily bars for structure: {symbol}")
         closes = [item[1] for item in bars]
-        volumes = [item[2] for item in bars]
+        highs = [item[2] for item in bars]
+        lows = [item[3] for item in bars]
+        volumes = [item[4] for item in bars]
         as_of = datetime.fromtimestamp(bars[-1][0], timezone.utc).isoformat()
         signals: list[dict[str, Any]] = []
 
@@ -239,6 +290,11 @@ class FreeMarketDataProvider:
         average_volume = sum(volumes[-21:-1]) / 20
         if average_volume > 0:
             add("volume_vs_20d", f"{symbol} 当日成交量相对20日均量", volumes[-1] / average_volume, "ratio")
+        supports, resistances = self._structural_levels(closes, highs, lows)
+        for index, value in enumerate(supports, start=1):
+            add(f"structural_support_{index}", f"{symbol} 结构支撑 {index}", value, currency)
+        for index, value in enumerate(resistances, start=1):
+            add(f"structural_resistance_{index}", f"{symbol} 结构压力 {index}", value, currency)
         return signals
 
     def _stooq(self, instrument_id: str, symbol: str, currency: str) -> list[dict[str, Any]]:
@@ -299,7 +355,7 @@ class FreeMarketDataProvider:
                 except Exception as exc:
                     errors.append(_error("binance-derivatives", exc))
             try:
-                calendar_name = "HKEX" if instrument.exchange == "HKEX" else "NYMEX" if instrument.exchange == "NYMEX" else "US"
+                calendar_name = "HKEX" if instrument.exchange == "HKEX" else "NYMEX" if instrument.exchange in {"NYMEX", "COMEX"} else "US"
                 closed_session = None if instrument.asset_class == "crypto" else self.calendar.latest_closed_session(calendar_name, as_of)
                 market_timezone = None if instrument.asset_class == "crypto" else MARKET_RULES[calendar_name][0]
                 records.extend(self._yahoo(

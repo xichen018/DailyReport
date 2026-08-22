@@ -511,7 +511,7 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
                 table = Table(data, colWidths=col_widths, repeatRows=1)
                 table.setStyle(TableStyle([
                     ("FONTNAME", (0, 0), (-1, -1), font_name), ("FONTSIZE", (0, 0), (-1, -1), 7.5),
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E6F4F1")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#0F4F49")),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F2F4F7")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#344054")),
                     ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#D0D5DD")), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                     ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5), ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                 ]))
