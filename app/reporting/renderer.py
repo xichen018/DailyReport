@@ -340,9 +340,12 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
     for index, (owner, event) in enumerate(upcoming_entries, start=1):
         affected = "、".join(event.affected_assets_zh)
         source_links = _html_source_links(owner, event.source_ids)
+        date_label = event.event_at.strftime("%m月%d日 %H:%M")
+        if event.event_end_at is not None:
+            date_label = f"{event.event_at.strftime('%m月%d日')}-{event.event_end_at.strftime('%m月%d日')}"
         upcoming_body.append(
             f"<article><div class='event-line'><span class='news-index'>{upcoming_section_number}.{index}</span>"
-            f"<h4>{html.escape(event.event_at.strftime('%m月%d日 %H:%M'))} | {html.escape(event.title_zh)}</h4></div>"
+            f"<h4>{html.escape(date_label)} | {html.escape(event.title_zh)}</h4></div>"
             f"<div class='news-meta'><span>影响：{html.escape(affected)}</span><span class='news-source'>来源：{source_links}</span></div>"
             f"<p>{html.escape(event.why_it_matters_zh)}</p></article>"
         )
@@ -600,7 +603,10 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
         for index, (owner, event) in enumerate(upcoming_entries, start=1):
             affected = "、".join(event.affected_assets_zh)
             source_links = _pdf_source_links(owner, event.source_ids)
-            story.append(Paragraph(f"{upcoming_section_number}.{index}  |  {event.event_at.strftime('%m月%d日 %H:%M')}  |  {html.escape(event.title_zh)}", styles["h4"]))
+            date_label = event.event_at.strftime("%m月%d日 %H:%M")
+            if event.event_end_at is not None:
+                date_label = f"{event.event_at.strftime('%m月%d日')}-{event.event_end_at.strftime('%m月%d日')}"
+            story.append(Paragraph(f"{upcoming_section_number}.{index}  |  {date_label}  |  {html.escape(event.title_zh)}", styles["h4"]))
             story.append(Paragraph(f"影响标的：{html.escape(affected)}", styles["small"]))
             story.append(Paragraph(html.escape(event.why_it_matters_zh), styles["body"]))
             if source_links:

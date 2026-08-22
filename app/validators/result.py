@@ -441,6 +441,8 @@ def validate_result(
             raise ValidationFailure(f"upcoming event has unknown source ids: {sorted(missing)}")
         if not result.window.end_at < event.event_at <= result.window.end_at + timedelta(days=7):
             raise ValidationFailure(f"upcoming event outside next-seven-day window: {event.title_zh}")
+        if event.event_end_at is not None and not event.event_at <= event.event_end_at <= result.window.end_at + timedelta(days=7):
+            raise ValidationFailure(f"upcoming event end outside next-seven-day window: {event.title_zh}")
         urls = {canonical_url(str(source_map[sid].url)) for sid in event.source_ids}
         if provider_data is not None and not urls.intersection(news_urls):
             raise ValidationFailure(f"upcoming event URL not found in provider data: {event.title_zh}")

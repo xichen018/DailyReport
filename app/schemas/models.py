@@ -89,6 +89,7 @@ class NewsItem(StrictModel):
 
 class UpcomingEvent(StrictModel):
     event_at: datetime
+    event_end_at: datetime | None = None
     title_zh: str = Field(min_length=1)
     affected_assets_zh: list[str] = Field(min_length=1)
     why_it_matters_zh: str = Field(min_length=1)

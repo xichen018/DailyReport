@@ -105,6 +105,7 @@ class ValidatorTests(unittest.TestCase):
         news_source_id = result.instruments[0].news[0].source_ids[0]
         result.upcoming_events = [UpcomingEvent(
             event_at=self.context.window.end_at + timedelta(days=3),
+            event_end_at=self.context.window.end_at + timedelta(days=5),
             title_zh="公司已公告的投资者活动",
             affected_assets_zh=["港股"],
             why_it_matters_zh="活动可能提供经营指引更新。",
