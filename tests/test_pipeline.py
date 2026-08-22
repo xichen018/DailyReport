@@ -51,6 +51,7 @@ class PipelineTests(unittest.TestCase):
                 self.assertIn("不得凭模型记忆", call["prompt"]["common_rules"])
                 self.assertIn("不得补写新旧目标价", call["prompt"]["common_rules"])
                 self.assertIn("`investment_analyses` 不是标的覆盖清单", call["prompt"]["common_rules"])
+                self.assertIn("不得把 `shared_context` 中的指标复制", call["prompt"]["common_rules"])
                 if call["task_id"] in {"hk_equities", "us_semis_optics", "us_platform_media", "cybersecurity"}:
                     self.assertIn("可直接阅读的投资含义段落", call["prompt"]["module_instructions"])
                     self.assertIn("评级和目标价调整", call["prompt"]["module_instructions"])
