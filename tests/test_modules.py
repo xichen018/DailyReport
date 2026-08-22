@@ -81,6 +81,13 @@ class ModuleConfigTests(unittest.TestCase):
         self.assertTrue(macro.background_search_terms_zh)
         self.assertTrue(macro.background_search_terms_en)
 
+    def test_reader_facing_evidence_rejects_isolated_indicator_boilerplate(self) -> None:
+        common = (ROOT / "app" / "prompts" / "common_rules.md").read_text(encoding="utf-8")
+        cross_asset = (ROOT / "app" / "prompts" / "cross_asset.md").read_text(encoding="utf-8")
+        self.assertIn("单一截面的资金费率", common)
+        self.assertIn("证据不能支持方向时直接省略", common)
+        self.assertIn("单一时点的资金费率或未平仓量不得写入", cross_asset)
+
 
 if __name__ == "__main__":
     unittest.main()

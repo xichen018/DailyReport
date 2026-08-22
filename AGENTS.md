@@ -12,6 +12,7 @@
 - The reader-facing report must use investment-research language, not pipeline or engineering language.
 - Do not show `failed`, `partial success`, stack traces, provider exceptions, or delivery status in the report body.
 - Missing evidence should appear as `待补数据` or a concise statement that available evidence is insufficient for a reliable conclusion.
+- Keep isolated indicator readings in structured audit data. Do not promote a metric to reader-facing evidence unless comparison, abnormality, direction, or corroboration makes it decision-useful; omit boilerplate that only says the metric cannot determine direction.
 - Keep detailed failures and diagnostics in JSON manifests and logs for operators.
 - Preview reports must be clearly labeled as design/process previews and must not look like real investment conclusions.
 
