@@ -44,6 +44,8 @@ class PipelineTests(unittest.TestCase):
                 self.assertIn("可验证领先信号", call["prompt"]["common_rules"])
                 self.assertIn("用户提供且不可篡改的研究基线", call["prompt"]["common_rules"])
                 self.assertIn("严禁修改、补写或推断", call["prompt"]["common_rules"])
+                self.assertIn("审计所有量化论证", call["prompt"]["common_rules"])
+                self.assertIn("区分事实、市场定价与解释", call["prompt"]["common_rules"])
                 if call["task_id"] in {"hk_equities", "us_semis_optics", "us_platform_media", "cybersecurity"}:
                     self.assertIn("影响判断", call["prompt"]["module_instructions"])
                     self.assertIn("核心变化", call["prompt"]["module_instructions"])
@@ -56,6 +58,9 @@ class PipelineTests(unittest.TestCase):
                 if call["task_id"] == "macro_market":
                     self.assertIn("固定数据检查与新闻筛选相互独立", call["prompt"]["module_instructions"])
                     self.assertIn("不得根据预定日历假设数据已经公布", call["prompt"]["module_instructions"])
+                    self.assertIn("先识别市场结构，再解释原因", call["prompt"]["module_instructions"])
+                if call["task_id"] == "cross_asset":
+                    self.assertIn("不得因价格与新闻同时出现就认定因果", call["prompt"]["module_instructions"])
                 self.assertNotIn("必须检查 Marketaux", call["prompt"]["common_rules"])
             self.assertTrue((run_dir / "merged" / "report_input.json").is_file())
             self.assertTrue((run_dir / "reports" / "daily-report.html").is_file())
