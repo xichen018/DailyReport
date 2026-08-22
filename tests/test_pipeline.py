@@ -42,6 +42,8 @@ class PipelineTests(unittest.TestCase):
                 self.assertIn("所有输出必须使用简体中文", call["prompt"]["common_rules"])
                 self.assertIn("Yahoo Chart API 可作为股票和指数价格的主来源", call["prompt"]["common_rules"])
                 self.assertIn("可验证领先信号", call["prompt"]["common_rules"])
+                self.assertIn("用户提供且不可篡改的研究基线", call["prompt"]["common_rules"])
+                self.assertIn("严禁修改、补写或推断", call["prompt"]["common_rules"])
                 if call["task_id"] in {"hk_equities", "us_semis_optics", "us_platform_media", "cybersecurity"}:
                     self.assertIn("影响判断", call["prompt"]["module_instructions"])
                     self.assertIn("核心变化", call["prompt"]["module_instructions"])

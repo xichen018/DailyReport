@@ -4,7 +4,7 @@
 - 完成配置中的 price_checks、news_categories、industry_topics、triggered_checks 和各标的 focus；这些是检查范围，不是新闻配额。
 - 只输出达到公共规则重要性门槛的新闻，不得为了覆盖分类而凑数。
 - 盘前盘后检查只在 triggered_checks 条件满足时执行，不得把美股规则用于港股。
-- `research_context` 和 `investment_context` 只用于建立分析基线。正文只写新闻带来的增量变化，不复述与该新闻无关的背景。
+- `research_context` 和 `investment_context` 只用于建立分析基线，内容不可篡改。正文只写新闻带来的增量变化，不复述与该新闻无关的背景；引用基线时不得改变原意，不得补充用户未提供的数字、日期、口径或结论，不得把分析推论写成用户观点。
 
 每条入选新闻的 `rationale_zh` 必须严格使用以下四段，不限制字数：
 1. `影响判断：【正面/负面/中性】`。判断针对基本面预期、估值基础或风险，不是股价预测。
