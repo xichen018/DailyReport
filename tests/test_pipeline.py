@@ -49,6 +49,7 @@ class PipelineTests(unittest.TestCase):
                 if call["task_id"] in {"hk_equities", "us_semis_optics", "us_platform_media", "cybersecurity"}:
                     self.assertIn("影响判断", call["prompt"]["module_instructions"])
                     self.assertIn("核心变化", call["prompt"]["module_instructions"])
+                    self.assertIn("不得重复 `summary_zh`", call["prompt"]["module_instructions"])
                     self.assertIn("传导分析", call["prompt"]["module_instructions"])
                     self.assertIn("正向证据", call["prompt"]["module_instructions"])
                     self.assertIn("负向证据", call["prompt"]["module_instructions"])
