@@ -167,6 +167,7 @@ def validate_result(
 
     market_candidates: dict[str, list[dict[str, Any]]] = {}
     provider_news_articles: list[dict[str, Any]] = []
+    provider_upcoming_events: list[dict[str, Any]] = []
     provider_news_urls: list[str] = []
     news_urls: set[str] = set()
     macro_metric_ids: set[str] = set()
@@ -181,6 +182,7 @@ def validate_result(
             for item in provider_data.get("news", {}).get("articles", [])
             if item.get("url")
         ]
+        provider_upcoming_events = list(provider_data.get("news", {}).get("upcoming_events", []))
         provider_news_urls = [
             str(item["url"])
             for item in provider_news_articles
@@ -446,6 +448,16 @@ def validate_result(
         urls = {canonical_url(str(source_map[sid].url)) for sid in event.source_ids}
         if provider_data is not None and not urls.intersection(news_urls):
             raise ValidationFailure(f"upcoming event URL not found in provider data: {event.title_zh}")
+        if provider_data is not None:
+            matched = any(
+                candidate.get("url")
+                and canonical_url(str(candidate["url"])) in urls
+                and datetime.fromisoformat(str(candidate["event_at"]).replace("Z", "+00:00")) == event.event_at
+                and datetime.fromisoformat(str(candidate["event_end_at"]).replace("Z", "+00:00")) == event.event_end_at
+                for candidate in provider_upcoming_events
+            )
+            if not matched:
+                raise ValidationFailure(f"upcoming event dates not found in provider data: {event.title_zh}")
         key = (event.event_at, normalized_headline(event.title_zh))
         if key not in upcoming_seen:
             upcoming_seen.add(key)

@@ -507,9 +507,45 @@ class FreeNewsProvider:
             article_start = end_at - timedelta(days=14) if article.get("background_candidate") or article.get("upcoming_candidate") else start_at
             if article_start <= published.astimezone(start_at.tzinfo) <= end_at:
                 window_articles.append(article)
+        upcoming_events = []
+        month_numbers = {
+            name: number for number, name in enumerate(
+                ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"),
+                start=1,
+            )
+        }
+        range_pattern = re.compile(
+            r"\b(" + "|".join(month_numbers) + r")\s+(\d{1,2})\s*[-–]\s*(\d{1,2})\b",
+            re.IGNORECASE,
+        )
+        for article in window_articles:
+            if not article.get("upcoming_candidate"):
+                continue
+            headline = str(article.get("headline") or "")
+            match = range_pattern.search(headline)
+            if match is None:
+                continue
+            month = month_numbers[match.group(1).title()]
+            start_day, end_day = int(match.group(2)), int(match.group(3))
+            year = end_at.year
+            event_start = datetime(year, month, start_day, tzinfo=end_at.tzinfo)
+            event_end = datetime(year, month, end_day, 23, 59, tzinfo=end_at.tzinfo)
+            if event_end <= end_at and month < end_at.month:
+                event_start = event_start.replace(year=year + 1)
+                event_end = event_end.replace(year=year + 1)
+            if end_at < event_start <= end_at + timedelta(days=7) and event_end <= end_at + timedelta(days=7):
+                upcoming_events.append({
+                    "title": headline,
+                    "event_at": event_start.isoformat(),
+                    "event_end_at": event_end.isoformat(),
+                    "publisher": article.get("publisher"),
+                    "url": article.get("url"),
+                    "provider": article.get("provider"),
+                })
         return {
             "provider": self.name,
             "articles": window_articles,
+            "upcoming_events": upcoming_events,
             "queries": queries,
             "errors": errors,
             "optional_errors": optional_errors,

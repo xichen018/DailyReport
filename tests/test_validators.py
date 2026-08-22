@@ -111,6 +111,13 @@ class ValidatorTests(unittest.TestCase):
             why_it_matters_zh="活动可能提供经营指引更新。",
             source_ids=[news_source_id],
         )]
+        source_url = next(item for item in result.sources if item.source_id == news_source_id).url
+        self.provider_data["news"]["upcoming_events"] = [{
+            "title": "公司已公告的投资者活动",
+            "event_at": (self.context.window.end_at + timedelta(days=3)).isoformat(),
+            "event_end_at": (self.context.window.end_at + timedelta(days=5)).isoformat(),
+            "url": str(source_url),
+        }]
 
         validated = validate_result(result, self.module, self.provider_data)
 

@@ -208,6 +208,29 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertTrue(any("hl=en-US" in url and "ceid=US%3Aen" in url for url in requested_urls))
         self.assertTrue(any("hl=zh-CN" in url and "ceid=HK%3Azh-Hans" in url for url in requested_urls))
 
+    def test_upcoming_date_range_is_structured_from_news_headline(self) -> None:
+        module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "macro_market")
+        rss = b"""<rss><channel><item>
+        <title>What to Look Out for in Economic Data This Week (August 24-28)</title>
+        <description>Economic data calendar</description>
+        <pubDate>Fri, 21 Aug 2026 16:32:09 GMT</pubDate>
+        <source>Kiplinger</source><link>https://example.test/calendar</link>
+        </item></channel></rss>"""
+
+        def fake_get(url: str, _: float) -> bytes:
+            return b'{"articles": []}' if "gdeltproject.org" in url else rss
+
+        with patch("app.providers.http._get", side_effect=fake_get):
+            result = FreeNewsProvider(None).get_task_data(
+                module,
+                datetime(2026, 8, 21, 16, 0, tzinfo=ZoneInfo("Asia/Hong_Kong")),
+                datetime(2026, 8, 22, 22, 0, tzinfo=ZoneInfo("Asia/Hong_Kong")),
+            )
+
+        event = result["upcoming_events"][0]
+        self.assertEqual(event["event_at"], "2026-08-24T00:00:00+08:00")
+        self.assertEqual(event["event_end_at"], "2026-08-28T23:59:00+08:00")
+
     def test_macro_ratio_is_calculated_by_provider_for_all_periods(self) -> None:
         module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "macro_market")
         end_at = datetime(2026, 8, 18, tzinfo=ZoneInfo("Asia/Hong_Kong"))
