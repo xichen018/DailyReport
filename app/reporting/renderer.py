@@ -3,9 +3,12 @@ from __future__ import annotations
 import html
 import json
 import re
+from collections import Counter
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Iterable
+from zoneinfo import ZoneInfo
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
@@ -39,6 +42,32 @@ PRICE_KIND_ZH = {
 NON_DECISION_EVIDENCE_PHRASES = ("不能单独证明", "不能证明", "不能据此", "不足以判断", "不能单独说明")
 
 RATIONALE_LABELS = ("影响判断：", "核心变化：", "传导分析：", "关键验证：")
+HKT = ZoneInfo("Asia/Hong_Kong")
+ISO_DATETIME_RE = re.compile(
+    r"(?<!\d)(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2}))(?!\d)"
+)
+
+
+def _reader_datetime_text(value: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        parsed = datetime.fromisoformat(match.group(1).replace("Z", "+00:00"))
+        return parsed.astimezone(HKT).strftime("%m月%d日 %H:%M HKT")
+
+    return ISO_DATETIME_RE.sub(replace, value)
+
+
+def _reader_html(value: str) -> str:
+    return html.escape(_reader_datetime_text(value))
+
+
+def _duplicated_catalysts(results: list[ResearchTaskResult]) -> set[str]:
+    values = [
+        analysis.catalysts_zh.strip()
+        for result in results
+        for analysis in result.investment_analyses
+        if analysis.catalysts_zh.strip()
+    ]
+    return {value for value, count in Counter(values).items() if count > 1}
 
 
 def _rationale_sections(value: str) -> list[tuple[str, str]]:
@@ -208,6 +237,7 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
         item for result in result_list for item in result.section_news
     ]
     upcoming_entries = _upcoming_event_entries(result_list)
+    duplicated_catalysts = _duplicated_catalysts(result_list)
     regime = next((item.market_regime_zh for item in result_list if item.market_regime_zh), "")
     portfolio_note = next((item.portfolio_implications_zh for item in result_list if item.portfolio_implications_zh), "")
     top_views = [
@@ -294,7 +324,7 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
                 )
                 analysis_parts = [
                     "<div class='asset-analysis'><h4><span>A</span>当前判断</h4>",
-                    f"<p class='scenario-lead'>{html.escape(analysis.investment_view_zh)}</p>",
+                    f"<p class='scenario-lead'>{_reader_html(analysis.investment_view_zh)}</p>",
                 ]
                 for label, title, value in (
                     ("B", "市场正在定价什么", analysis.market_pricing_zh),
@@ -302,8 +332,10 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
                     ("D", "未来催化剂", analysis.catalysts_zh),
                     ("E", "关键价位与应对", analysis.levels_and_actions_zh or analysis.key_variable_zh),
                 ):
+                    if label == "D" and value.strip() in duplicated_catalysts:
+                        continue
                     if value:
-                        analysis_parts.append(f"<h4><span>{label}</span>{title}</h4><p>{html.escape(value)}</p>")
+                        analysis_parts.append(f"<h4><span>{label}</span>{title}</h4><p>{_reader_html(value)}</p>")
                 analysis_parts.extend((evidence_block, f"<p class='news-source'>观点来源：{source_links}</p></div>"))
                 body.append("".join(analysis_parts))
             if instrument.news:
@@ -342,12 +374,12 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
             body.append("</div>")
         if result.macro_observations:
             rows = "".join(
-                f"<tr><td>{html.escape(item.label)}</td><td>{html.escape(_format_number(item.value))}</td><td>{html.escape(item.unit)}</td><td>{html.escape(item.period)}</td><td>{html.escape(_source_refs(item.source_ids, source_labels))}</td></tr>"
+                f"<tr><td>{html.escape(item.label)}</td><td>{html.escape(_format_number(item.value))}</td><td>{html.escape(item.unit)}</td><td>{_reader_html(item.period)}</td><td>{html.escape(_source_refs(item.source_ids, source_labels))}</td></tr>"
                 for item in result.macro_observations
             )
             body.append("<table class='data-table'><thead><tr><th>指标</th><th>数值</th><th>单位</th><th>期间</th><th>来源</th></tr></thead><tbody>" + rows + "</tbody></table>")
         for metric in result.relative_metrics:
-            body.append(f"<div class='metric-note'><strong>{html.escape(metric.numerator)}/{html.escape(metric.denominator)}</strong><p>{html.escape(metric.interpretation_zh)} <span class='source-ref'>{html.escape(_source_refs(metric.source_ids, source_labels))}</span></p></div>")
+            body.append(f"<div class='metric-note'><strong>{html.escape(metric.numerator)}/{html.escape(metric.denominator)}</strong><p>{_reader_html(metric.interpretation_zh)} <span class='source-ref'>{html.escape(_source_refs(metric.source_ids, source_labels))}</span></p></div>")
         if result.warnings:
             body.append("<details class='quality'><summary>数据质量记录（{count}）</summary><ul>{items}</ul></details>".format(count=len(result.warnings), items="".join(f"<li>{html.escape(item.message_zh)}</li>" for item in result.warnings)))
         if result.sources:
@@ -490,6 +522,7 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
     result_list = list(results)
     instruments = [instrument for result in result_list for instrument in result.instruments]
     upcoming_entries = _upcoming_event_entries(result_list)
+    duplicated_catalysts = _duplicated_catalysts(result_list)
     doc = SimpleDocTemplate(str(path), pagesize=A4, leftMargin=17 * mm, rightMargin=17 * mm, topMargin=20 * mm, bottomMargin=17 * mm, title="金融市场日报")
 
     def decorate_page(canvas: object, document: object) -> None:
@@ -525,12 +558,12 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
     regime = next((item.market_regime_zh for item in result_list if item.market_regime_zh), "")
     portfolio_note = next((item.portfolio_implications_zh for item in result_list if item.portfolio_implications_zh), "")
     if regime:
-        story.extend((Paragraph("市场环境", styles["h4"]), Paragraph(html.escape(regime), styles["body"])))
+        story.extend((Paragraph("市场环境", styles["h4"]), Paragraph(_reader_html(regime), styles["body"])))
     top_views = [analysis.investment_view_zh for result in result_list for analysis in result.investment_analyses if analysis.investment_view_zh][:3]
     for index, view in enumerate(top_views, start=1):
-        story.extend((Paragraph(f"组合判断 {index}", styles["h4"]), Paragraph(html.escape(view), styles["body"])))
+        story.extend((Paragraph(f"组合判断 {index}", styles["h4"]), Paragraph(_reader_html(view), styles["body"])))
     if portfolio_note:
-        story.extend((Paragraph("联动与集中风险", styles["h4"]), Paragraph(html.escape(portfolio_note), styles["body"])))
+        story.extend((Paragraph("联动与集中风险", styles["h4"]), Paragraph(_reader_html(portfolio_note), styles["body"])))
     story.extend([Spacer(1, 3 * mm), Paragraph("市场快照", styles["h3"])])
     snapshot = [["标的", "价格", "涨跌幅", "交易日", "来源"]]
     for instrument in instruments:
@@ -605,21 +638,23 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
             if analysis:
                 source_links = _pdf_source_links(result, analysis.source_ids)
                 story.append(Paragraph("A  |  当前判断", styles["h4"]))
-                story.append(Paragraph(html.escape(analysis.investment_view_zh), styles["body"]))
+                story.append(Paragraph(_reader_html(analysis.investment_view_zh), styles["body"]))
                 for label, title, value in (
                     ("B", "市场正在定价什么", analysis.market_pricing_zh),
                     ("C", "关键分歧与增量信息", analysis.variant_view_zh),
                     ("D", "未来催化剂", analysis.catalysts_zh),
                     ("E", "关键价位与应对", analysis.levels_and_actions_zh or analysis.key_variable_zh),
                 ):
+                    if label == "D" and value.strip() in duplicated_catalysts:
+                        continue
                     if value:
                         story.append(Paragraph(f"{label}  |  {title}", styles["h4"]))
-                        story.append(Paragraph(html.escape(value), styles["body"]))
+                        story.append(Paragraph(_reader_html(value), styles["body"]))
                 evidence_items = _reader_evidence(analysis.key_evidence_zh)
                 if evidence_items:
                     story.append(Paragraph("证据依据", styles["h4"]))
                 for index, evidence in enumerate(evidence_items, start=1):
-                    story.append(Paragraph(f"{index}. {html.escape(evidence)}", styles["body"]))
+                    story.append(Paragraph(f"{index}. {_reader_html(evidence)}", styles["body"]))
                 if source_links:
                     story.append(Paragraph(f"观点来源：{source_links}", styles["small"]))
             if instrument.news:
@@ -647,33 +682,34 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
                 story.append(Paragraph(html.escape(item.summary_zh), styles["body"]))
                 story.extend(_pdf_rationale(item.rationale_zh, styles))
         for item in result.macro_observations:
-            story.append(Paragraph(f"{item.label}：{_format_number(item.value)} {item.unit}（{item.period}）[{html.escape(_source_refs(item.source_ids, source_labels))}]", styles["body"]))
+            story.append(Paragraph(f"{item.label}：{_format_number(item.value)} {item.unit}（{_reader_datetime_text(item.period)}）[{html.escape(_source_refs(item.source_ids, source_labels))}]", styles["body"]))
         for metric in result.relative_metrics:
-            story.append(Paragraph(f"{metric.numerator}/{metric.denominator}：{html.escape(metric.interpretation_zh)} [{html.escape(_source_refs(metric.source_ids, source_labels))}]", styles["body"]))
+            story.append(Paragraph(f"{metric.numerator}/{metric.denominator}：{_reader_html(metric.interpretation_zh)} [{html.escape(_source_refs(metric.source_ids, source_labels))}]", styles["body"]))
         story.append(Spacer(1, 4 * mm))
     upcoming_section_number = len(result_list) + 1
-    story.append(Paragraph(f"{upcoming_section_number}  未来一周关键事件", styles["h2"]))
+    upcoming_story: list[object] = [Paragraph(f"{upcoming_section_number}  未来一周关键事件", styles["h2"])]
     if upcoming_entries:
         for index, (owner, event) in enumerate(upcoming_entries, start=1):
             affected = "、".join(event.affected_assets_zh)
             source_links = _pdf_source_links(owner, event.source_ids)
             date_label = _event_date_label(event)
-            story.append(Paragraph(f"{upcoming_section_number}.{index}  |  {date_label}  |  {html.escape(event.title_zh)}", styles["h4"]))
-            story.append(Paragraph(f"影响标的：{html.escape(affected)}", styles["small"]))
+            upcoming_story.append(Paragraph(f"{upcoming_section_number}.{index}  |  {date_label}  |  {html.escape(event.title_zh)}", styles["h4"]))
             values = " / ".join(item for item in (
                 f"预期 {event.consensus}" if event.consensus else "",
                 f"前值 {event.prior}" if event.prior else "",
                 f"实际 {event.actual}" if event.actual else "",
             ) if item)
-            if values:
-                story.append(Paragraph(f"数据：{html.escape(values)}", styles["body"]))
+            detail_parts = [f"影响：{affected}"]
             if event.transmission_variable_zh:
-                story.append(Paragraph(f"传导变量：{html.escape(event.transmission_variable_zh)}", styles["body"]))
-            story.append(Paragraph(html.escape(event.why_it_matters_zh), styles["body"]))
+                detail_parts.append(f"传导：{event.transmission_variable_zh}")
+            if values:
+                detail_parts.append(f"数据：{values}")
+            upcoming_story.append(Paragraph(_reader_html("；".join(detail_parts)), styles["small"]))
             if source_links:
-                story.append(Paragraph(f"来源：{source_links}", styles["small"]))
+                upcoming_story.append(Paragraph(f"来源：{source_links}", styles["small"]))
     else:
-        story.append(Paragraph("未来七天暂未取得日期与来源均可核实的重大事件。", styles["meta"]))
+        upcoming_story.append(Paragraph("未来七天暂未取得日期与来源均可核实的重大事件。", styles["meta"]))
+    story.append(KeepTogether(upcoming_story))
     doc.build(story, onFirstPage=decorate_page, onLaterPages=decorate_page)
 
 

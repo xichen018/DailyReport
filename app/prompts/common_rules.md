@@ -7,12 +7,13 @@
 - `instruments` 只能包含 `module.instruments` 中配置的标的，`instrument_id` 必须逐字一致，不得把指数、宏观指标或新闻实体新增为标的。若 `module.instruments` 为空，输出中的 `instruments` 必须为空数组。
 - 每个事实必须引用输入 sources 中存在的 source_id。引用 URL 不等于已经读取该网页正文；`provider_data` 中候选记录的 `headline`、`description`、结构化行情和宏观字段，是本次可使用的全部事实边界。任何主体、动作、数字、单位、日期、前值、新值、原因或结论若未明确出现在这些字段中，均不得凭模型记忆、常识、URL、标题暗示或可能存在的网页正文补写。候选只写“上调/下调目标价”但未给出具体数值时，只能报告调整动作，不得补写新旧目标价；候选只给出新目标价但未给出旧值时，不得计算或描述调整幅度。
 - `module.research_context`、`module.research_memory` 和各标的 `investment_context` 是用户提供且不可篡改的研究基线，不是窗口内新闻，也不代表已经由本次来源核实。研究记忆中的 `verified_facts` 只有在本次 `provider_data` 再次验证后才能写作当前事实；`author_views` 必须按“作者/机构、日期、观点”引用。必须忠实保留原意，严禁修改、补写或推断用户没有提供的内容，严禁把分析师观点升级为事实。冲突观点必须并列，不得静默覆盖；已过有效期的记录不会进入 prompt。
-- `provider_data.news.upcoming_events` 是程序验证过的未来七天单项事件。逐字使用 `event_at`、`event_end_at`、`original_timezone`、`original_time_label`、`all_day`、`confirmation_status` 和 `last_verified_at`，不得自行换算或补日期。只有周度范围、相对日期或泛泛风险的文章不能写入日历。填写具体 `transmission_variable_zh`，说明事件首先改变哪个可观察变量，再说明受影响资产。预期值、前值和实际值只有 provider 明确提供时才能填写。没有结构化候选时返回空数组。
+- `provider_data.news.upcoming_events` 只服务报告末尾的未来七天精确日历。逐字使用 `event_at`、`event_end_at`、`original_timezone`、`original_time_label`、`all_day`、`confirmation_status` 和 `last_verified_at`，不得自行换算或补日期。只有周度范围、相对日期或泛泛风险的文章不能写入该日历。填写具体 `transmission_variable_zh`，说明事件首先改变哪个可观察变量，再说明受影响资产。预期值、前值和实际值只有 provider 明确提供时才能填写。没有结构化候选时返回空数组。
+- 资产下的 `catalysts_zh` 不受七天日历限制。必须检查 `provider_data.news.articles` 中标记为 `upcoming_candidate` 的材料、当前窗口新闻和相关研究记忆，纳入与该资产判断期限相关、默认未来90天内足以改变盈利、监管边界、资金流、供需或风险溢价的已知事件。包括法案听证、委员会或两院表决、行政签署窗口、监管决定期限、财报、产品发布、协议升级、代币解锁、ETF决定、央行会议和供给会议。具体日期只有来源明确提供时才能写；只确认进程或事项而未确认日期时写“时间待定”，并准确说明当前所处阶段，禁止把提案写成已通过、把媒体预计写成官方日程。泛泛风险、无新增进程的长期主题和无法说明传导变量的事项不得写入。
 
 - 来源分三类：官方/公司一级源可支持“已确认事实”；FT、WSJ、The Defiant、ChainFeeds 等专业媒体可支持“媒体报道”或“分析师观点”；聚合源只用于发现和交叉验证。`content_access=snippet_only` 时，只能使用标题与候选摘要中逐字可见的事实，严禁推断正文内容。关键方向结论若只有媒体单一来源，必须明确写成报道或观点，不得写成已确认事实。
 - Investing.com 经济日历只作为市场预期、前值和重要性等级的二级来源；事件日期与时间优先服从官方日历。只有 provider 已结构化提供的 consensus/prior 才能写入事件，不得从模型记忆补数值。
 
-- 每个有充分证据的 `investment_analyses` 必须按同一决策顺序填写：`investment_view_zh` 是带时间跨度和核心驱动的当前判断；`market_pricing_zh` 说明价格、宏观、资金或基本面正在定价什么；`variant_view_zh` 说明相对共识的增量或分歧；`catalysts_zh` 列出未来七天具体催化及传导；`levels_and_actions_zh` 写关键价位或可验证条件及对应判断变化。不得为了填栏目而重复同一句话。
+- 每个有充分证据的 `investment_analyses` 必须按同一决策顺序填写：`investment_view_zh` 是带时间跨度和核心驱动的当前判断；`market_pricing_zh` 说明价格、宏观、资金或基本面正在定价什么；`variant_view_zh` 说明相对共识的增量或分歧；`catalysts_zh` 列出与判断期限匹配的重要未来事件、当前阶段及传导；`levels_and_actions_zh` 写关键价位或可验证条件及对应判断变化。不得为了填栏目而重复同一句话，资产催化与末尾七天日历不得机械复制同一段文字。
 
 - `market_regime_zh` 只写当前市场环境与风险偏好；`portfolio_implications_zh` 只写组合集中风险、跨资产联动或最重要的仓位含义。没有足够证据时留空，不写中性套话。
 - 配置数组中的每一项都是独立的强制检查项；不得以宽泛主题替代或省略。

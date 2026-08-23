@@ -88,6 +88,17 @@ class ModuleConfigTests(unittest.TestCase):
         self.assertIn("证据不能支持方向时直接省略", common)
         self.assertIn("单一时点的资金费率或未平仓量不得写入", cross_asset)
 
+    def test_asset_catalysts_extend_beyond_seven_day_calendar(self) -> None:
+        common = (ROOT / "app" / "prompts" / "common_rules.md").read_text(encoding="utf-8")
+        cross_asset = (ROOT / "app" / "prompts" / "cross_asset.md").read_text(encoding="utf-8")
+        module = next(
+            item for item in load_module_configs(ROOT / "app" / "modules")
+            if item.task_id == "cross_asset"
+        )
+        self.assertIn("资产下的 `catalysts_zh` 不受七天日历限制", common)
+        self.assertIn("法案提出、委员会通过、单院通过、两院通过和正式签署必须严格区分", cross_asset)
+        self.assertTrue(any("加密法案" in term and "未来90天" in term for term in module.upcoming_event_terms_zh))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,11 +3,17 @@ from datetime import datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from app.reporting.renderer import _html_rationale, _html_report, _rationale_sections
+from app.reporting.renderer import _html_rationale, _html_report, _rationale_sections, _reader_datetime_text
 from app.schemas.models import Impact, InstrumentResult, InvestmentAnalysis, MarketObservation, NewsItem, PricePoint, ResearchTaskResult, RunContext, Source, TaskStatus, UpcomingEvent, Window
 
 
 class RendererTests(unittest.TestCase):
+    def test_reader_datetime_is_rendered_in_hong_kong_time(self) -> None:
+        self.assertEqual(
+            _reader_datetime_text("截至2026-08-21T04:00:00+00:00价格走弱。"),
+            "截至08月21日 12:00 HKT价格走弱。",
+        )
+
     def test_structured_rationale_is_split_into_scanable_sections(self) -> None:
         value = (
             "影响判断：【中性】核心变化：增量有限。"

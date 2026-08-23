@@ -560,7 +560,7 @@ class FreeNewsProvider:
             for domain in official_event_domains:
                 search_queries.append((f"{query_text} site:{domain}", "en", False, True))
         for query_text, language, background_candidate, upcoming_candidate in search_queries:
-            lookback_days = 14 if background_candidate or upcoming_candidate else 2
+            lookback_days = 45 if upcoming_candidate else 14 if background_candidate else 2
             windowed_query = f"({query_text}) when:{lookback_days}d"
             locale = (
                 {"hl": "en-US", "gl": "US", "ceid": "US:en"}

@@ -9,8 +9,8 @@ triggered_checks = ["出现大幅价格波动时查明直接原因"]
 source_requirements = ["BTC 权威报价使用 Binance BTC/USDT，并用 CoinGecko 等交叉核验", "BTC技术结构使用Binance现货日线K线程序计算，衍生品使用Binance Futures资金费率与未平仓量；不同口径不得混用", "BTC现货ETF净流量优先使用基金发行人、交易所或Farside等逐日汇总；新闻对流入流出的描述不能替代精确净流量", "CoinGlass清算热力图和衍生品密集区仅在取得可审计API数据时作为BTC结构位的增强确认，不得从网页图片估读价位，也不得替代现货价格结构", "链上指标必须来自具名链上数据提供方并保留指标口径；未取得精确值时标记数据不可用", "黄金行情使用Yahoo Chart的COMEX黄金期货GC=F；支撑压力由程序使用日线摆动高低点、30日区间与20/50日均线候选计算，不得表述为确定价位", "WTI 官方结算必须使用 NYMEX CL 近月合约官方数据，MCL 仅作微型合约映射；未取得官方结算时可另外输出 Yahoo Chart 的 CL 近月合约参考价，但不得标为官方结算", "Google News RSS 中英文检索为必查", "GDELT 与 Marketaux 对 BTC/黄金/原油仅作可选增强", "Yahoo Chart API 可用于黄金与WTI参考行情，不得将Yahoo参考价表述为交易所官方结算", "每条事实记录媒体名或机构名及 URL"]
 search_terms_zh = ["比特币 现货ETF 资金流", "比特币 SEC 监管 立法", "比特币 机构 买入 抛售", "比特币 链上 交易所流量", "比特币 衍生品 清算 未平仓", "黄金 央行 ETF 实际利率 美元 地缘政治", "WTI 原油 OPEC 库存 地缘政治 美元"]
 search_terms_en = ["Bitcoin spot ETF flows", "Bitcoin SEC regulation legislation", "Bitcoin institutional buying selling", "Bitcoin on-chain exchange flows", "Bitcoin derivatives liquidations open interest", "gold central bank ETF real yields dollar geopolitics", "WTI oil OPEC EIA API inventory geopolitics demand forecast dollar"]
-upcoming_event_terms_zh = ["未来一周 比特币 ETF SEC 监管 事件 日期", "未来一周 黄金 美联储 经济数据 事件 日期", "未来一周 OPEC EIA 原油 事件 日期"]
-upcoming_event_terms_en = ["next week Bitcoin ETF SEC crypto event date", "next week gold Federal Reserve economic data event date", "next week OPEC EIA oil event date"]
+upcoming_event_terms_zh = ["未来90天 比特币 加密法案 听证 表决 签署 SEC ETF 决定 协议升级 日期", "未来90天 黄金 美联储 经济数据 央行 事件 日期", "未来90天 OPEC EIA 原油 会议 供给 事件 日期"]
+upcoming_event_terms_en = ["next 90 days Bitcoin crypto bill hearing vote signing SEC ETF decision protocol upgrade date", "next 90 days gold Federal Reserve economic data central bank event date", "next 90 days OPEC EIA oil meeting supply event date"]
 no_news_policy = "逐个标的完成全部专属主题检查；窗口内确无重要新闻时明确写无重大新闻"
 background_policy = "只补充窗口外但仍在发酵的近期重要背景；标注原始日期并设置 outside_window=true"
 
