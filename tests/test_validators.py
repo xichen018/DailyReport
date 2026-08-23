@@ -11,7 +11,7 @@ from app.modules.loader import load_module_configs
 from app.orchestrator.context import build_run_context
 from app.prompts.builder import PromptBuilder
 from app.providers.mock import MockProviderBundle
-from app.schemas.models import CheckStatus, ResearchTaskResult, UpcomingEvent
+from app.schemas.models import CheckStatus, EventStatus, ResearchTaskResult, UpcomingEvent
 from app.validators.result import ValidationFailure, canonical_url, validate_result
 
 
@@ -116,12 +116,16 @@ class ValidatorTests(unittest.TestCase):
             "title": "公司已公告的投资者活动",
             "event_at": (self.context.window.end_at + timedelta(days=3)).isoformat(),
             "event_end_at": (self.context.window.end_at + timedelta(days=5)).isoformat(),
+            "confirmation_status": "confirmed",
+            "last_verified_at": self.context.window.end_at.isoformat(),
             "url": str(source_url),
         }]
 
         validated = validate_result(result, self.module, self.provider_data)
 
         self.assertEqual(len(validated.upcoming_events), 1)
+        self.assertIs(validated.upcoming_events[0].confirmation_status, EventStatus.CONFIRMED)
+        self.assertIsInstance(validated.upcoming_events[0].last_verified_at, datetime)
         result = ResearchTaskResult.model_validate(self.raw)
         result.upcoming_events = [UpcomingEvent(
             event_at=self.context.window.end_at + timedelta(days=8),

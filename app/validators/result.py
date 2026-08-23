@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from pydantic import HttpUrl
 
 from app.modules.loader import ModuleConfig
-from app.schemas.models import CheckStatus, PricePoint, RelativeObservation, ResearchTaskResult, Source, TaskStatus, TaskWarning
+from app.schemas.models import CheckStatus, EventStatus, PricePoint, RelativeObservation, ResearchTaskResult, Source, TaskStatus, TaskWarning
 from app.text.chinese import to_simplified_chinese
 from app.research.sources import source_policy
 
@@ -473,9 +473,12 @@ def validate_result(
                 raise ValidationFailure(f"upcoming event timezone not found in provider data: {event.title_zh}")
             if event.all_day != bool(candidate.get("all_day", False)):
                 raise ValidationFailure(f"upcoming event all-day status not found in provider data: {event.title_zh}")
-            event.confirmation_status = candidate.get("confirmation_status", "tentative")
+            event.confirmation_status = EventStatus(candidate.get("confirmation_status", "tentative"))
             event.original_time_label = candidate.get("original_time_label")
-            event.last_verified_at = candidate.get("last_verified_at")
+            verified_at = candidate.get("last_verified_at")
+            event.last_verified_at = (
+                datetime.fromisoformat(str(verified_at).replace("Z", "+00:00")) if verified_at else None
+            )
             event.consensus = candidate.get("consensus")
             event.prior = candidate.get("prior")
             event.actual = candidate.get("actual")
