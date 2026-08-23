@@ -27,3 +27,7 @@
 
 - Read this file, recent Git commits, and `docs/phase-3-integration.md` at the start of a new task.
 - Record durable product decisions here or in `docs/` so a new Codex task can recover context without relying on prior chat history.
+- The versioned research memory lives in `research/library/`. User-provided materials are imported with `daily-report import-research`; active records are retrieved by asset/topic on every run.
+- Research memory is opinion context, not a current-fact store. Preserve author/date/provenance, retain conflicts, and exclude expired records from prompts.
+- Upcoming events shown to readers must be single, source-backed events with a concrete date. Weekly date ranges and relative dates are discovery material only and must not appear as calendar entries.
+- Reader-facing event times use Hong Kong time and retain the original timezone label. Only confirmed events appear in the PDF calendar.

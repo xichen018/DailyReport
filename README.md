@@ -2,6 +2,16 @@
 
 面向 AWS EC2 的自动化中文金融日报系统。mock 与真实 OpenAI 全流程已完成；新闻使用无需密钥的 Google News RSS 与 GDELT 2.0，Marketaux 仅作可选增强，宏观数据使用 FRED。日报 PDF 可通过 Amazon SES 自动投递。
 
+## 研究材料记忆
+
+用户提供的 PDF、DOCX、Markdown、文本或合法公开 URL 可导入版本化研究库：
+
+```bash
+daily-report import-research ./analysis.pdf --source "研究机构" --author "作者" --asset BTC --topic ETF --horizon structural
+```
+
+记录保存于 `research/library/`，包含来源、适用资产、期限、观点摘录、有效期与复核日。材料观点不会被当作当前事实；过期记录不会进入日报 prompt，冲突观点不会互相覆盖。不要将受版权保护的媒体全文或凭据提交到仓库。
+
 ## 本地运行
 
 要求 Python 3.12+。正式环境安装：

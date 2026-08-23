@@ -36,6 +36,7 @@ class PipelineTests(unittest.TestCase):
                 self.assertIn("news_categories", call["prompt"]["module"])
                 self.assertIn("source_requirements", call["prompt"]["module"])
                 self.assertIn("research_context", call["prompt"]["module"])
+                self.assertIn("research_memory", call["prompt"]["module"])
                 self.assertIn("data_checks", call["prompt"]["module"])
                 self.assertIn("background_search_terms", call["prompt"]["module"])
                 self.assertTrue(call["prompt"]["module"]["required_research_checks"])

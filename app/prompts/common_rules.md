@@ -6,8 +6,14 @@
 - 不得编造价格、百分比、新闻、标的、日期或来源。
 - `instruments` 只能包含 `module.instruments` 中配置的标的，`instrument_id` 必须逐字一致，不得把指数、宏观指标或新闻实体新增为标的。若 `module.instruments` 为空，输出中的 `instruments` 必须为空数组。
 - 每个事实必须引用输入 sources 中存在的 source_id。引用 URL 不等于已经读取该网页正文；`provider_data` 中候选记录的 `headline`、`description`、结构化行情和宏观字段，是本次可使用的全部事实边界。任何主体、动作、数字、单位、日期、前值、新值、原因或结论若未明确出现在这些字段中，均不得凭模型记忆、常识、URL、标题暗示或可能存在的网页正文补写。候选只写“上调/下调目标价”但未给出具体数值时，只能报告调整动作，不得补写新旧目标价；候选只给出新目标价但未给出旧值时，不得计算或描述调整幅度。
-- `module.research_context` 和各标的 `investment_context` 是用户提供且不可篡改的研究基线，不是窗口内新闻，也不代表已经由本次来源核实。必须忠实保留其原意，严禁修改、补写或推断其中未提供的主体、数字、单位、日期、口径、因果关系、概率、观点和结论；严禁把不同条目拼接成用户没有表达过的新判断。仅在判断新增事实相对既有认知的变化时使用，不得无关复述、不得为其创建新闻或 source_id、不得把其中的观点升级为已确认事实。基线含义不清或信息不足时，只能明确不确定性，不得自行解释。基线内部存在冲突时必须保留冲突并指出，禁止自行调和。基线与本次来源冲突时，分别陈述“用户基线”和“本次可验证信息”及其差异，禁止静默覆盖任何一方。
-- 使用 `module.upcoming_event_terms` 对未来一周做独立前瞻检索。`provider_data.news.upcoming_events` 是程序从候选标题中解析并通过未来七天校验的日期区间；存在与本模块相关的候选时必须写入 `upcoming_events`，并逐字使用其 `event_at` 与 `event_end_at`，不得自行改动日期。允许使用同一批候选文章中明确指出的具体重点完善标题和投资含义，但所有合并事实均须列入 `source_ids`。来源只给出“下周”“周三”等相对日期、且未进入结构化候选时不得自行换算。必须在 `affected_assets_zh` 中简洁列出受影响的资产或市场，并用一句话说明具体影响变量。不得用模型记忆补日期，不得收录没有确定日程的预测、传闻或泛泛风险。没有结构化候选时返回空数组。
+- `module.research_context`、`module.research_memory` 和各标的 `investment_context` 是用户提供且不可篡改的研究基线，不是窗口内新闻，也不代表已经由本次来源核实。研究记忆中的 `verified_facts` 只有在本次 `provider_data` 再次验证后才能写作当前事实；`author_views` 必须按“作者/机构、日期、观点”引用。必须忠实保留原意，严禁修改、补写或推断用户没有提供的内容，严禁把分析师观点升级为事实。冲突观点必须并列，不得静默覆盖；已过有效期的记录不会进入 prompt。
+- `provider_data.news.upcoming_events` 是程序验证过的未来七天单项事件。逐字使用 `event_at`、`event_end_at`、`original_timezone`、`original_time_label`、`all_day`、`confirmation_status` 和 `last_verified_at`，不得自行换算或补日期。只有周度范围、相对日期或泛泛风险的文章不能写入日历。填写具体 `transmission_variable_zh`，说明事件首先改变哪个可观察变量，再说明受影响资产。预期值、前值和实际值只有 provider 明确提供时才能填写。没有结构化候选时返回空数组。
+
+- 来源分三类：官方/公司一级源可支持“已确认事实”；FT、WSJ、The Defiant、ChainFeeds 等专业媒体可支持“媒体报道”或“分析师观点”；聚合源只用于发现和交叉验证。`content_access=snippet_only` 时，只能使用标题与候选摘要中逐字可见的事实，严禁推断正文内容。关键方向结论若只有媒体单一来源，必须明确写成报道或观点，不得写成已确认事实。
+
+- 每个有充分证据的 `investment_analyses` 必须按同一决策顺序填写：`investment_view_zh` 是带时间跨度和核心驱动的当前判断；`market_pricing_zh` 说明价格、宏观、资金或基本面正在定价什么；`variant_view_zh` 说明相对共识的增量或分歧；`catalysts_zh` 列出未来七天具体催化及传导；`levels_and_actions_zh` 写关键价位或可验证条件及对应判断变化。不得为了填栏目而重复同一句话。
+
+- `market_regime_zh` 只写当前市场环境与风险偏好；`portfolio_implications_zh` 只写组合集中风险、跨资产联动或最重要的仓位含义。没有足够证据时留空，不写中性套话。
 - 配置数组中的每一项都是独立的强制检查项；不得以宽泛主题替代或省略。
 - `module.required_research_checks` 是精确输出计划。必须为其中每一项输出且仅输出一条 `research_checks` 记录；逐字复制 `check_id`、`requirement_type`、`scope_id`、`requirement_zh`，只填写 `status`、`conclusion_zh`、`source_ids`。不得改名、改 scope、合并、拆分、遗漏或新增。
 - `data_checks` 是无条件固定检查，不适用新闻重要性门槛。存在对应输入数据时必须输出；输入未提供精确数据时使用 `data_unavailable` 并明确写“未能获取精确数据”，不得使用 `no_material_finding` 或 `not_triggered`。

@@ -11,6 +11,7 @@ from pydantic import HttpUrl
 from app.modules.loader import ModuleConfig
 from app.schemas.models import CheckStatus, PricePoint, RelativeObservation, ResearchTaskResult, Source, TaskStatus, TaskWarning
 from app.text.chinese import to_simplified_chinese
+from app.research.sources import source_policy
 
 
 class ValidationFailure(ValueError):
@@ -92,6 +93,11 @@ def validate_result(
     if len(source_ids) != len(result.sources):
         raise ValidationFailure("duplicate source_id")
     warnings = list(result.warnings)
+    for source in result.sources:
+        policy = source_policy(str(source.url), source.publisher)
+        source.source_tier = policy.tier
+        source.content_access = policy.content_access
+        source.evidence_role = policy.role
 
     if provider_data is not None:
         provider_articles = [
@@ -449,15 +455,27 @@ def validate_result(
         if provider_data is not None and not urls.intersection(news_urls):
             raise ValidationFailure(f"upcoming event URL not found in provider data: {event.title_zh}")
         if provider_data is not None:
-            matched = any(
-                candidate.get("url")
+            matched_candidates = [
+                candidate for candidate in provider_upcoming_events
+                if candidate.get("url")
                 and canonical_url(str(candidate["url"])) in urls
                 and datetime.fromisoformat(str(candidate["event_at"]).replace("Z", "+00:00")) == event.event_at
-                and datetime.fromisoformat(str(candidate["event_end_at"]).replace("Z", "+00:00")) == event.event_end_at
-                for candidate in provider_upcoming_events
-            )
+                and (
+                    datetime.fromisoformat(str(candidate["event_end_at"]).replace("Z", "+00:00"))
+                    if candidate.get("event_end_at") else None
+                ) == event.event_end_at
+            ]
+            matched = bool(matched_candidates)
             if not matched:
                 raise ValidationFailure(f"upcoming event dates not found in provider data: {event.title_zh}")
+            candidate = matched_candidates[0]
+            if event.original_timezone != candidate.get("original_timezone", "Asia/Hong_Kong"):
+                raise ValidationFailure(f"upcoming event timezone not found in provider data: {event.title_zh}")
+            if event.all_day != bool(candidate.get("all_day", False)):
+                raise ValidationFailure(f"upcoming event all-day status not found in provider data: {event.title_zh}")
+            event.confirmation_status = candidate.get("confirmation_status", "tentative")
+            event.original_time_label = candidate.get("original_time_label")
+            event.last_verified_at = candidate.get("last_verified_at")
         key = (event.event_at, normalized_headline(event.title_zh))
         if key not in upcoming_seen:
             upcoming_seen.add(key)

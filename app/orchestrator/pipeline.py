@@ -43,7 +43,7 @@ class DailyReportPipeline:
         self.output_root = output_root or project_root / "data" / "runs"
         self.max_workers = max_workers
         self.report_mode = report_mode
-        self.prompt_builder = PromptBuilder(project_root / "app" / "prompts")
+        self.prompt_builder = PromptBuilder(project_root / "app" / "prompts", project_root / "research" / "library")
         all_modules = load_module_configs(project_root / "app" / "modules")
         if task_ids:
             known = {module.task_id for module in all_modules}

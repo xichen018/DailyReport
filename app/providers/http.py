@@ -17,6 +17,7 @@ import httpx
 from app.modules.loader import ModuleConfig
 from app.providers.base import ProviderBundle
 from app.providers.calendar import MARKET_RULES, SimpleTradingCalendar
+from app.research.sources import source_policy
 
 
 USER_AGENT = "DailyReport/0.2 (+financial-research; contact=operator)"
@@ -466,6 +467,27 @@ class FreeNewsProvider:
             *((query_text, "zh", False, True) for query_text in module.upcoming_event_terms_zh),
             *((query_text, "en", False, True) for query_text in module.upcoming_event_terms_en),
         ]
+        professional_domains = (
+            ["ft.com", "wsj.com"]
+            if module.task_id == "macro_market"
+            else ["thedefiant.io", "chainfeeds.xyz", "ft.com", "wsj.com"]
+            if module.task_id == "cross_asset"
+            else ["ft.com", "wsj.com"]
+        )
+        for query_text in module.search_terms_en[:2]:
+            for domain in professional_domains:
+                search_queries.append((f"{query_text} site:{domain}", "en", False, False))
+        official_event_domains = {
+            "macro_market": ["bls.gov", "bea.gov", "census.gov", "federalreserve.gov"],
+            "cross_asset": ["sec.gov", "eia.gov", "opec.org", "federalreserve.gov"],
+            "hk_equities": ["hkexnews.hk"],
+            "us_semis_optics": ["sec.gov"],
+            "us_platform_media": ["sec.gov"],
+            "cybersecurity": ["sec.gov"],
+        }.get(module.task_id, [])
+        for query_text in module.upcoming_event_terms_en:
+            for domain in official_event_domains:
+                search_queries.append((f"{query_text} site:{domain}", "en", False, True))
         for query_text, language, background_candidate, upcoming_candidate in search_queries:
             lookback_days = 14 if background_candidate or upcoming_candidate else 2
             windowed_query = f"({query_text}) when:{lookback_days}d"
@@ -484,12 +506,17 @@ class FreeNewsProvider:
                     "status": "success", "returned": len(returned),
                 })
                 for item in returned:
+                    publisher = item.findtext("source") or "Google News"
+                    link = item.findtext("link") or ""
+                    policy = source_policy(link, publisher)
                     articles.append({
                         "instrument_id": None, "headline": item.findtext("title"), "description": item.findtext("description"),
-                        "published_at": _iso_published_at(item.findtext("pubDate")), "publisher": item.findtext("source") or "Google News",
-                        "url": item.findtext("link"), "provider": "google-news-rss", "query": query_text,
+                        "published_at": _iso_published_at(item.findtext("pubDate")), "publisher": publisher,
+                        "url": link, "provider": "google-news-rss", "query": query_text,
                         "language": language, "background_candidate": background_candidate,
                         "upcoming_candidate": upcoming_candidate,
+                        "source_tier": policy.tier, "content_access": policy.content_access,
+                        "evidence_role": policy.role, "author": None,
                     })
             except Exception as exc:
                 errors.append(_error("google-news-rss", exc))
@@ -514,30 +541,48 @@ class FreeNewsProvider:
                 start=1,
             )
         }
-        range_pattern = re.compile(
-            r"\b(" + "|".join(month_numbers) + r")\s+(\d{1,2})\s*[-–]\s*(\d{1,2})\b",
+        exact_pattern = re.compile(
+            r"\b(" + "|".join(month_numbers) + r")\s+(\d{1,2})(?:,?\s+(\d{4}))?"
+            r"(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\s*(ET|EST|EDT|UTC|GMT))?\b",
             re.IGNORECASE,
         )
+        timezone_map = {"ET": "America/New_York", "EST": "America/New_York", "EDT": "America/New_York", "UTC": "UTC", "GMT": "UTC"}
         for article in window_articles:
             if not article.get("upcoming_candidate"):
                 continue
             headline = str(article.get("headline") or "")
-            match = range_pattern.search(headline)
+            if re.search(r"\d{1,2}\s*[-–]\s*\d{1,2}", headline):
+                continue
+            match = exact_pattern.search(headline)
             if match is None:
                 continue
             month = month_numbers[match.group(1).title()]
-            start_day, end_day = int(match.group(2)), int(match.group(3))
-            year = end_at.year
-            event_start = datetime(year, month, start_day, tzinfo=end_at.tzinfo)
-            event_end = datetime(year, month, end_day, 23, 59, tzinfo=end_at.tzinfo)
-            if event_end <= end_at and month < end_at.month:
-                event_start = event_start.replace(year=year + 1)
-                event_end = event_end.replace(year=year + 1)
-            if end_at < event_start <= end_at + timedelta(days=7) and event_end <= end_at + timedelta(days=7):
+            day = int(match.group(2))
+            year = int(match.group(3) or end_at.year)
+            hour = int(match.group(4) or 0)
+            minute = int(match.group(5) or 0)
+            meridiem = (match.group(6) or "").lower()
+            if meridiem.startswith("p") and hour < 12:
+                hour += 12
+            if meridiem.startswith("a") and hour == 12:
+                hour = 0
+            original_zone = timezone_map.get((match.group(7) or "").upper(), "Asia/Hong_Kong")
+            event_local = datetime(year, month, day, hour, minute, tzinfo=ZoneInfo(original_zone))
+            event_start = event_local.astimezone(end_at.tzinfo)
+            if match.group(3) is None and event_start <= end_at and month < end_at.month:
+                event_local = event_local.replace(year=year + 1)
+                event_start = event_local.astimezone(end_at.tzinfo)
+            policy = source_policy(str(article.get("url") or ""), str(article.get("publisher") or ""))
+            if end_at < event_start <= end_at + timedelta(days=7):
                 upcoming_events.append({
                     "title": headline,
                     "event_at": event_start.isoformat(),
-                    "event_end_at": event_end.isoformat(),
+                    "event_end_at": None,
+                    "original_timezone": original_zone,
+                    "original_time_label": event_local.strftime("%Y-%m-%d %H:%M %Z"),
+                    "all_day": match.group(4) is None,
+                    "confirmation_status": "confirmed" if policy.tier == "primary" else "tentative",
+                    "last_verified_at": end_at.isoformat(),
                     "publisher": article.get("publisher"),
                     "url": article.get("url"),
                     "provider": article.get("provider"),

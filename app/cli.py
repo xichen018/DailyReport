@@ -18,6 +18,7 @@ from app.providers.mock import MockProviderBundle
 from app.providers.http import build_free_provider_bundle
 from app.schemas.models import ResearchTaskResult
 from app.settings import Settings
+from app.research.library import import_material
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -91,6 +92,21 @@ def command_schema(_: argparse.Namespace) -> int:
     return 0
 
 
+def command_import_research(args: argparse.Namespace) -> int:
+    record = import_material(
+        args.locator,
+        PROJECT_ROOT / "research" / "library",
+        source_name=args.source,
+        author=args.author,
+        published_on=datetime.fromisoformat(args.published_on).date() if args.published_on else None,
+        assets=args.asset,
+        topics=args.topic,
+        horizon=args.horizon,
+    )
+    print(json.dumps(record.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Automated financial daily report")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -108,6 +124,15 @@ def build_parser() -> argparse.ArgumentParser:
     health.set_defaults(func=command_healthcheck)
     schema = subparsers.add_parser("schema")
     schema.set_defaults(func=command_schema)
+    research = subparsers.add_parser("import-research", help="import a research PDF, DOCX, text file, Markdown file, or public URL")
+    research.add_argument("locator")
+    research.add_argument("--source", required=True)
+    research.add_argument("--author")
+    research.add_argument("--published-on", help="ISO date")
+    research.add_argument("--asset", action="append", default=[])
+    research.add_argument("--topic", action="append", default=[])
+    research.add_argument("--horizon", choices=("tactical", "structural"), default="tactical")
+    research.set_defaults(func=command_import_research)
     return parser
 
 

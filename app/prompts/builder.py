@@ -4,16 +4,22 @@ from pathlib import Path
 
 from app.modules.loader import ModuleConfig
 from app.schemas.models import RunContext
+from app.research.library import ResearchLibrary
 from app.validators.result import required_research_check_plan
 
 
 class PromptBuilder:
-    def __init__(self, prompt_dir: Path) -> None:
+    def __init__(self, prompt_dir: Path, research_root: Path | None = None) -> None:
         self.prompt_dir = prompt_dir
+        self.research_library = ResearchLibrary(research_root or prompt_dir.parents[1] / "research" / "library")
 
     def build(self, module: ModuleConfig, context: RunContext) -> dict[str, object]:
         common = (self.prompt_dir / "common_rules.md").read_text(encoding="utf-8")
         template = (self.prompt_dir / module.template).read_text(encoding="utf-8")
+        terms = {module.title_zh, *module.industry_topics, *module.news_categories}
+        for instrument in module.instruments:
+            terms.update({instrument.instrument_id, instrument.symbol, instrument.name, *instrument.aliases})
+        memories = self.research_library.relevant(terms, context.scheduled_for.date())
         return {
             "common_rules": common,
             "module_instructions": template,
@@ -21,6 +27,7 @@ class PromptBuilder:
                 "task_id": module.task_id,
                 "title_zh": module.title_zh,
                 "research_context": list(module.research_context),
+                "research_memory": [record.model_dump(mode="json") for record in memories],
                 "price_checks": list(module.price_checks),
                 "news_categories": list(module.news_categories),
                 "industry_topics": list(module.industry_topics),

@@ -23,6 +23,11 @@ class Impact(StrEnum):
     NEUTRAL = "neutral"
 
 
+class EventStatus(StrEnum):
+    CONFIRMED = "confirmed"
+    TENTATIVE = "tentative"
+
+
 class CheckStatus(StrEnum):
     COMPLETED = "completed"
     NO_MATERIAL_FINDING = "no_material_finding"
@@ -64,6 +69,10 @@ class Source(StrictModel):
     url: HttpUrl
     published_at: datetime | None = None
     retrieved_at: datetime
+    source_tier: str = "secondary"
+    content_access: str = "snippet_only"
+    evidence_role: str = "reported_fact"
+    author: str | None = None
 
 
 class PricePoint(StrictModel):
@@ -90,9 +99,18 @@ class NewsItem(StrictModel):
 class UpcomingEvent(StrictModel):
     event_at: datetime
     event_end_at: datetime | None = None
+    original_timezone: str = "Asia/Hong_Kong"
+    original_time_label: str | None = None
+    all_day: bool = False
+    confirmation_status: EventStatus = EventStatus.CONFIRMED
     title_zh: str = Field(min_length=1)
     affected_assets_zh: list[str] = Field(min_length=1)
+    transmission_variable_zh: str = ""
     why_it_matters_zh: str = Field(min_length=1)
+    consensus: str | None = None
+    prior: str | None = None
+    actual: str | None = None
+    last_verified_at: datetime | None = None
     source_ids: list[str] = Field(min_length=1)
 
 
@@ -145,6 +163,10 @@ class InvestmentAnalysis(StrictModel):
     investment_view_zh: str
     key_evidence_zh: list[str] = Field(min_length=1, max_length=3)
     key_variable_zh: str
+    market_pricing_zh: str = ""
+    variant_view_zh: str = ""
+    catalysts_zh: str = ""
+    levels_and_actions_zh: str = ""
     source_ids: list[str] = Field(min_length=1)
 
 
@@ -209,6 +231,8 @@ class ResearchTaskResult(StrictModel):
     request_id: str
     task_id: str
     title_zh: str
+    market_regime_zh: str = ""
+    portfolio_implications_zh: str = ""
     status: TaskStatus
     window: Window
     instruments: list[InstrumentResult] = Field(default_factory=list)
