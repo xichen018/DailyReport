@@ -29,6 +29,7 @@ SOURCE_POLICIES: dict[str, SourcePolicy] = {
     "ft.com": PROFESSIONAL,
     "thedefiant.io": SPECIALIST,
     "chainfeeds.xyz": SPECIALIST,
+    "investing.com": SourcePolicy("calendar_secondary", "public", "consensus_or_prior"),
     "news.google.com": AGGREGATOR,
     "gdeltproject.org": AGGREGATOR,
     "marketaux.com": AGGREGATOR,

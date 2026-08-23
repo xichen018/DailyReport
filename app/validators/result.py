@@ -476,6 +476,9 @@ def validate_result(
             event.confirmation_status = candidate.get("confirmation_status", "tentative")
             event.original_time_label = candidate.get("original_time_label")
             event.last_verified_at = candidate.get("last_verified_at")
+            event.consensus = candidate.get("consensus")
+            event.prior = candidate.get("prior")
+            event.actual = candidate.get("actual")
         key = (event.event_at, normalized_headline(event.title_zh))
         if key not in upcoming_seen:
             upcoming_seen.add(key)

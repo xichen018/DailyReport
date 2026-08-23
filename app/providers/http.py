@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from email.utils import parsedate_to_datetime
+from html.parser import HTMLParser
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -26,6 +27,36 @@ STOOQ_SYMBOLS = {
     "MU": "mu.us", "COHR": "cohr.us", "GOOG": "goog.us", "DJT": "djt.us",
     "CRWD": "crwd.us", "1772.HK": "1772.hk", "6166.HK": "6166.hk", "CL1": "cl.f",
 }
+
+
+class _ScheduleTableParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.rows: list[list[tuple[str, str]]] = []
+        self._row: list[tuple[str, str]] | None = None
+        self._cell_class = ""
+        self._cell_parts: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        if tag == "tr":
+            self._row = []
+        elif tag == "td" and self._row is not None:
+            self._cell_class = attributes.get("class") or ""
+            self._cell_parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._cell_parts is not None and data.strip():
+            self._cell_parts.append(data.strip())
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "td" and self._row is not None and self._cell_parts is not None:
+            self._row.append((self._cell_class, " ".join(self._cell_parts)))
+            self._cell_parts = None
+        elif tag == "tr" and self._row is not None:
+            if self._row:
+                self.rows.append(self._row)
+            self._row = None
 
 
 def _get(url: str, timeout: float) -> bytes:
@@ -396,6 +427,46 @@ class FreeNewsProvider:
         self.marketaux_token = marketaux_token
         self.timeout = timeout
 
+    def _bea_calendar(self, end_at: datetime) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        url = "https://www.bea.gov/news/schedule"
+        parser = _ScheduleTableParser()
+        parser.feed(_get(url, self.timeout).decode("utf-8", errors="replace"))
+        events: list[dict[str, Any]] = []
+        articles: list[dict[str, Any]] = []
+        eastern = ZoneInfo("America/New_York")
+        for row in parser.rows:
+            date_text = next((text for css, text in row if "scheduled-date" in css), "")
+            title = next((text for css, text in row if "release-title" in css), "")
+            match = re.search(
+                r"(" + "|".join(("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"))
+                + r")\s+(\d{1,2})\s+(\d{1,2}):(\d{2})\s+(AM|PM)",
+                date_text,
+                re.IGNORECASE,
+            )
+            if match is None or not title:
+                continue
+            parsed = datetime.strptime(
+                f"{match.group(1)} {match.group(2)} {end_at.year} {match.group(3)}:{match.group(4)} {match.group(5)}",
+                "%B %d %Y %I:%M %p",
+            ).replace(tzinfo=eastern)
+            event_at = parsed.astimezone(end_at.tzinfo)
+            if not end_at < event_at <= end_at + timedelta(days=7):
+                continue
+            events.append({
+                "title": title, "event_at": event_at.isoformat(), "event_end_at": None,
+                "original_timezone": "America/New_York", "original_time_label": parsed.strftime("%Y-%m-%d %H:%M %Z"),
+                "all_day": False, "confirmation_status": "confirmed", "last_verified_at": end_at.isoformat(),
+                "publisher": "U.S. Bureau of Economic Analysis", "url": url, "provider": "bea-official-calendar",
+                "consensus": None, "prior": None, "actual": None,
+            })
+            articles.append({
+                "instrument_id": None, "headline": title, "description": f"Official BEA release scheduled for {date_text}",
+                "published_at": None, "publisher": "U.S. Bureau of Economic Analysis", "url": url,
+                "provider": "bea-official-calendar", "language": "en", "upcoming_candidate": True,
+                "source_tier": "primary", "content_access": "public", "evidence_role": "confirmed_fact", "author": None,
+            })
+        return events, articles
+
     def get_task_data(self, module: ModuleConfig, start_at: datetime, end_at: datetime) -> dict[str, Any]:
         articles: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
@@ -587,6 +658,15 @@ class FreeNewsProvider:
                     "url": article.get("url"),
                     "provider": article.get("provider"),
                 })
+        if module.task_id == "macro_market":
+            try:
+                official_events, official_articles = self._bea_calendar(end_at)
+                upcoming_events.extend(official_events)
+                window_articles.extend(official_articles)
+                queries.append({"provider": "bea-official-calendar", "status": "success", "returned": len(official_events)})
+            except Exception as exc:
+                errors.append(_error("bea-official-calendar", exc))
+                queries.append({"provider": "bea-official-calendar", "status": "failed", "returned": 0})
         return {
             "provider": self.name,
             "articles": window_articles,

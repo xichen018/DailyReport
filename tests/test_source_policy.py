@@ -14,6 +14,11 @@ class SourcePolicyTests(unittest.TestCase):
         self.assertEqual(policy.tier, "primary")
         self.assertEqual(policy.role, "confirmed_fact")
 
+    def test_investing_calendar_is_secondary(self) -> None:
+        policy = source_policy("https://www.investing.com/economic-calendar/", "Investing.com")
+        self.assertEqual(policy.tier, "calendar_secondary")
+        self.assertEqual(policy.role, "consensus_or_prior")
+
 
 if __name__ == "__main__":
     unittest.main()

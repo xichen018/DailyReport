@@ -10,6 +10,7 @@
 - `provider_data.news.upcoming_events` 是程序验证过的未来七天单项事件。逐字使用 `event_at`、`event_end_at`、`original_timezone`、`original_time_label`、`all_day`、`confirmation_status` 和 `last_verified_at`，不得自行换算或补日期。只有周度范围、相对日期或泛泛风险的文章不能写入日历。填写具体 `transmission_variable_zh`，说明事件首先改变哪个可观察变量，再说明受影响资产。预期值、前值和实际值只有 provider 明确提供时才能填写。没有结构化候选时返回空数组。
 
 - 来源分三类：官方/公司一级源可支持“已确认事实”；FT、WSJ、The Defiant、ChainFeeds 等专业媒体可支持“媒体报道”或“分析师观点”；聚合源只用于发现和交叉验证。`content_access=snippet_only` 时，只能使用标题与候选摘要中逐字可见的事实，严禁推断正文内容。关键方向结论若只有媒体单一来源，必须明确写成报道或观点，不得写成已确认事实。
+- Investing.com 经济日历只作为市场预期、前值和重要性等级的二级来源；事件日期与时间优先服从官方日历。只有 provider 已结构化提供的 consensus/prior 才能写入事件，不得从模型记忆补数值。
 
 - 每个有充分证据的 `investment_analyses` 必须按同一决策顺序填写：`investment_view_zh` 是带时间跨度和核心驱动的当前判断；`market_pricing_zh` 说明价格、宏观、资金或基本面正在定价什么；`variant_view_zh` 说明相对共识的增量或分歧；`catalysts_zh` 列出未来七天具体催化及传导；`levels_and_actions_zh` 写关键价位或可验证条件及对应判断变化。不得为了填栏目而重复同一句话。
 

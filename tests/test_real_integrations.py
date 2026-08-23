@@ -248,6 +248,20 @@ class RealIntegrationContractTests(unittest.TestCase):
             )
         self.assertEqual(result["upcoming_events"], [])
 
+    def test_bea_official_calendar_returns_exact_hkt_events(self) -> None:
+        html = b"""<table><tbody><tr class='scheduled-releases-type-press'>
+        <td class='scheduled-date no-wrap'><div class='release-date'>August 26</div><small>8:30 AM</small></td>
+        <td class='release-title views-field'>GDP (Second Estimate), 2nd Quarter 2026</td>
+        </tr></tbody></table>"""
+        provider = FreeNewsProvider(None)
+        end_at = datetime(2026, 8, 23, 8, 0, tzinfo=ZoneInfo("Asia/Hong_Kong"))
+        with patch("app.providers.http._get", return_value=html):
+            events, articles = provider._bea_calendar(end_at)
+        self.assertEqual(events[0]["event_at"], "2026-08-26T20:30:00+08:00")
+        self.assertEqual(events[0]["confirmation_status"], "confirmed")
+        self.assertEqual(events[0]["original_time_label"], "2026-08-26 08:30 EDT")
+        self.assertEqual(articles[0]["source_tier"], "primary")
+
     def test_macro_ratio_is_calculated_by_provider_for_all_periods(self) -> None:
         module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "macro_market")
         end_at = datetime(2026, 8, 18, tzinfo=ZoneInfo("Asia/Hong_Kong"))
