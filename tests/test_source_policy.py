@@ -19,6 +19,12 @@ class SourcePolicyTests(unittest.TestCase):
         self.assertEqual(policy.tier, "calendar_secondary")
         self.assertEqual(policy.role, "consensus_or_prior")
 
+    def test_us_legislative_calendars_are_primary(self) -> None:
+        for url in ("https://www.congress.gov/", "https://www.senate.gov/", "https://www.house.gov/"):
+            policy = source_policy(url)
+            self.assertEqual(policy.tier, "primary")
+            self.assertEqual(policy.role, "confirmed_fact")
+
 
 if __name__ == "__main__":
     unittest.main()

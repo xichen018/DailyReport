@@ -97,8 +97,8 @@ class ModuleConfigTests(unittest.TestCase):
         )
         self.assertIn("资产下的 `catalysts_zh` 不受七天日历限制", common)
         self.assertIn("法案提出、委员会通过、单院通过、两院通过和正式签署必须严格区分", cross_asset)
-        self.assertIn("不得把日期删成笼统的“时间待定”", common)
-        self.assertIn("具体日期（来源及发布日期列示，尚待官方确认）", cross_asset)
+        self.assertIn("研究记忆和媒体日期只用于发现与官方核验", common)
+        self.assertIn("加密法案日期必须由 Congress.gov", cross_asset)
         self.assertTrue(any("加密法案" in term and "未来90天" in term for term in module.upcoming_event_terms_zh))
 
 

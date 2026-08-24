@@ -21,6 +21,9 @@ SOURCE_POLICIES: dict[str, SourcePolicy] = {
     "bea.gov": PRIMARY,
     "census.gov": PRIMARY,
     "federalreserve.gov": PRIMARY,
+    "congress.gov": PRIMARY,
+    "senate.gov": PRIMARY,
+    "house.gov": PRIMARY,
     "sec.gov": PRIMARY,
     "eia.gov": PRIMARY,
     "opec.org": PRIMARY,
@@ -47,7 +50,8 @@ def source_policy(url: str, publisher: str | None = None) -> SourcePolicy:
     if any(name in normalized for name in (
         "bureau of labor statistics", "bureau of economic analysis", "federal reserve",
         "u.s. census", "energy information administration", "opec", "sec.gov",
-        "securities and exchange commission", "hong kong exchanges",
+        "securities and exchange commission", "hong kong exchanges", "congress.gov",
+        "u.s. congress", "united states senate", "u.s. senate", "house of representatives",
     )):
         return SourcePolicy("primary", "snippet_only", "confirmed_fact")
     if "wall street journal" in normalized or normalized == "wsj" or "financial times" in normalized:

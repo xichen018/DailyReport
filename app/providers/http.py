@@ -550,7 +550,7 @@ class FreeNewsProvider:
                 search_queries.append((f"{query_text} site:{domain}", "en", False, False))
         official_event_domains = {
             "macro_market": ["bls.gov", "bea.gov", "census.gov", "federalreserve.gov"],
-            "cross_asset": ["sec.gov", "eia.gov", "opec.org", "federalreserve.gov"],
+            "cross_asset": ["congress.gov", "senate.gov", "house.gov", "sec.gov", "eia.gov", "opec.org", "federalreserve.gov"],
             "hk_equities": ["hkexnews.hk"],
             "us_semis_optics": ["sec.gov"],
             "us_platform_media": ["sec.gov"],
