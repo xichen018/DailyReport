@@ -137,6 +137,45 @@ class ValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationFailure, "outside next-seven-day window"):
             validate_result(result, self.module, self.provider_data)
 
+    def test_upcoming_event_restores_unique_shared_official_source(self) -> None:
+        result = ResearchTaskResult.model_validate(self.raw)
+        event_at = self.context.window.end_at + timedelta(days=3)
+        result.upcoming_events = [UpcomingEvent(
+            event_at=event_at,
+            original_timezone="America/New_York",
+            title_zh="美国二季度GDP第二次估算与企业利润",
+            affected_assets_zh=["美股"],
+            why_it_matters_zh="数据将改变盈利与利率预期。",
+            source_ids=["source_bea_calendar"],
+        )]
+        self.provider_data["shared_context"] = {"news": {
+            "articles": [{
+                "headline": "Gross Domestic Product, 2nd Estimate",
+                "published_at": self.context.window.end_at.isoformat(),
+                "publisher": "U.S. Bureau of Economic Analysis",
+                "provider": "bea-official-calendar",
+                "url": "https://www.bea.gov/news/schedule",
+            }],
+            "upcoming_events": [{
+                "title": "Gross Domestic Product, 2nd Estimate",
+                "event_at": event_at.isoformat(),
+                "event_end_at": None,
+                "original_timezone": "America/New_York",
+                "all_day": False,
+                "confirmation_status": "confirmed",
+                "last_verified_at": self.context.window.end_at.isoformat(),
+                "publisher": "U.S. Bureau of Economic Analysis",
+                "provider": "bea-official-calendar",
+                "url": "https://www.bea.gov/news/schedule",
+            }],
+        }}
+
+        validated = validate_result(result, self.module, self.provider_data)
+
+        restored = next(source for source in validated.sources if source.source_id == "source_bea_calendar")
+        self.assertEqual(str(restored.url), "https://www.bea.gov/news/schedule")
+        self.assertTrue(any(warning.code == "EVENT_SOURCE_METADATA_RESTORED" for warning in validated.warnings))
+
     def test_missing_mandatory_research_check_is_rejected(self) -> None:
         broken = ResearchTaskResult.model_validate(self.raw)
         broken.research_checks.pop()

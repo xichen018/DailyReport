@@ -181,14 +181,21 @@ def validate_result(
     relative_metric_candidates: dict[str, dict[str, Any]] = {}
     market_signal_candidates: dict[tuple[str, str], dict[str, Any]] = {}
     if provider_data is not None:
+        shared_news = provider_data.get("shared_context", {}).get("news", {})
         for record in provider_data.get("market", {}).get("records", []):
             market_candidates.setdefault(record["instrument_id"], []).append(record)
         provider_news_articles = [
             item
-            for item in provider_data.get("news", {}).get("articles", [])
+            for item in [
+                *provider_data.get("news", {}).get("articles", []),
+                *shared_news.get("articles", []),
+            ]
             if item.get("url")
         ]
-        provider_upcoming_events = list(provider_data.get("news", {}).get("upcoming_events", []))
+        provider_upcoming_events = [
+            *provider_data.get("news", {}).get("upcoming_events", []),
+            *shared_news.get("upcoming_events", []),
+        ]
         provider_news_urls = [
             str(item["url"])
             for item in provider_news_articles
@@ -445,6 +452,40 @@ def validate_result(
     validated_upcoming = []
     for event in sorted(result.upcoming_events, key=lambda item: item.event_at):
         missing = set(event.source_ids) - source_ids
+        if missing and provider_data is not None:
+            date_matches = [
+                candidate for candidate in provider_upcoming_events
+                if candidate.get("url")
+                and datetime.fromisoformat(str(candidate["event_at"]).replace("Z", "+00:00")) == event.event_at
+                and (
+                    datetime.fromisoformat(str(candidate["event_end_at"]).replace("Z", "+00:00"))
+                    if candidate.get("event_end_at") else None
+                ) == event.event_end_at
+            ]
+            if len(date_matches) == 1 and len(missing) == 1:
+                missing_source_id = next(iter(missing))
+                candidate = date_matches[0]
+                restored = Source(
+                    source_id=missing_source_id,
+                    provider=str(candidate.get("provider") or "provider"),
+                    publisher=str(candidate.get("publisher") or "Unknown"),
+                    url=candidate["url"],
+                    published_at=None,
+                    retrieved_at=result.window.end_at,
+                )
+                policy = source_policy(str(restored.url), restored.publisher)
+                restored.source_tier = policy.tier
+                restored.content_access = policy.content_access
+                restored.evidence_role = policy.role
+                result.sources.append(restored)
+                source_ids.add(missing_source_id)
+                source_map[missing_source_id] = restored
+                warnings.append(TaskWarning(
+                    code="EVENT_SOURCE_METADATA_RESTORED",
+                    message_zh=f"已按唯一事件时间恢复官方来源：{event.title_zh}",
+                    field_path=f"sources.{missing_source_id}",
+                ))
+                missing = set()
         if missing:
             raise ValidationFailure(f"upcoming event has unknown source ids: {sorted(missing)}")
         if not result.window.end_at < event.event_at <= result.window.end_at + timedelta(days=7):
