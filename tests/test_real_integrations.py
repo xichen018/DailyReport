@@ -73,6 +73,126 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual(record["provider"], "binance")
         self.assertEqual(record["value"], "65000")
 
+    def test_sec_companyfacts_produces_comparable_quarterly_fundamentals(self) -> None:
+        def fact(entries: list[dict[str, object]]) -> dict[str, object]:
+            return {"units": {"USD": entries}}
+
+        prior = {"start": "2024-04-01", "end": "2024-06-30", "filed": "2024-08-01", "form": "10-Q", "frame": "CY2024Q2", "accn": "0001-24-000001"}
+        latest = {"start": "2025-04-01", "end": "2025-06-30", "filed": "2025-08-01", "form": "10-Q", "frame": "CY2025Q2", "accn": "0001-25-000001"}
+        payload = {
+            "facts": {"us-gaap": {
+                "RevenueFromContractWithCustomerExcludingAssessedTax": fact([{**prior, "val": 800}, {**latest, "val": 1000}]),
+                "OperatingIncomeLoss": fact([{**prior, "val": 120}, {**latest, "val": 200}]),
+                "NetCashProvidedByUsedInOperatingActivities": fact([{**prior, "val": 180}, {**latest, "val": 250}]),
+                "PaymentsToAcquirePropertyPlantAndEquipment": fact([{**prior, "val": 80}, {**latest, "val": 100}]),
+                "Assets": fact([
+                    {"end": "2025-06-30", "filed": "2025-08-01", "form": "10-Q", "frame": "CY2025Q2I", "accn": "0001-25-000001", "val": 5000},
+                ]),
+            }}
+        }
+
+        with patch("app.providers.http._get", return_value=json.dumps(payload).encode()):
+            observations = FreeMarketDataProvider()._sec_fundamentals(
+                "alphabet_c", "GOOG", datetime(2025, 8, 10, tzinfo=timezone.utc)
+            )
+
+        by_id = {item["metric_id"]: item for item in observations}
+        self.assertEqual(by_id["sec_revenue"]["change_pct"], "25.00")
+        self.assertEqual(by_id["sec_revenue"]["period_end"], "2025-06-30")
+        self.assertEqual(by_id["sec_revenue"]["form"], "10-Q")
+        self.assertEqual(by_id["sec_operating_margin"]["value"], "20.00")
+        self.assertEqual(by_id["sec_free_cash_flow"]["value"], "150")
+        self.assertEqual(by_id["sec_assets"]["value"], "5000")
+        self.assertTrue(by_id["sec_revenue"]["source_url"].startswith("https://data.sec.gov/"))
+
+    def test_sec_companyfacts_rejects_cumulative_and_future_facts(self) -> None:
+        units = {"USD": [
+            {"start": "2025-01-01", "end": "2025-06-30", "filed": "2025-08-01", "form": "10-Q", "frame": "CY2025Q2", "val": 200},
+            {"start": "2025-04-01", "end": "2025-06-30", "filed": "2025-09-01", "form": "10-Q", "frame": "CY2025Q2", "val": 100},
+        ]}
+
+        entries = FreeMarketDataProvider._sec_quarterly_entries(
+            units, instant=False, as_of=datetime(2025, 8, 10, tzinfo=timezone.utc)
+        )
+
+        self.assertEqual(entries, [])
+
+    def test_sec_companyfacts_merges_tags_when_reporting_tag_changes(self) -> None:
+        def fact(entries: list[dict[str, object]]) -> dict[str, object]:
+            return {"units": {"USD": entries}}
+
+        old = {"start": "2024-04-01", "end": "2024-06-30", "filed": "2024-08-01", "form": "10-Q", "frame": "CY2024Q2", "accn": "old", "val": 800}
+        new = {"start": "2025-04-01", "end": "2025-06-30", "filed": "2025-08-01", "form": "10-Q", "frame": "CY2025Q2", "accn": "new", "val": 1000}
+        payload = {"facts": {"us-gaap": {
+            "RevenueFromContractWithCustomerExcludingAssessedTax": fact([old]),
+            "Revenues": fact([new]),
+        }}}
+
+        with patch("app.providers.http._get", return_value=json.dumps(payload).encode()):
+            observations = FreeMarketDataProvider()._sec_fundamentals(
+                "alphabet_c", "GOOG", datetime(2025, 8, 10, tzinfo=timezone.utc)
+            )
+
+        revenue = next(item for item in observations if item["metric_id"] == "sec_revenue")
+        self.assertEqual(revenue["period_end"], "2025-06-30")
+        self.assertEqual(revenue["tag"], "Revenues")
+        self.assertEqual(revenue["change_pct"], "25.00")
+
+    def test_sec_companyfacts_accepts_unframed_fiscal_quarter(self) -> None:
+        units = {"USD": [{
+            "start": "2025-02-01", "end": "2025-04-30", "filed": "2025-06-01",
+            "form": "10-Q", "fy": 2026, "fp": "Q1", "accn": "fiscal-q1", "val": 500,
+        }]}
+
+        entries = FreeMarketDataProvider._sec_quarterly_entries(
+            units, instant=False, as_of=datetime(2025, 6, 10, tzinfo=timezone.utc)
+        )
+
+        self.assertEqual(entries[0]["frame"], "FY2026Q1")
+        self.assertEqual(entries[0]["period_basis"], "reported_quarter_fiscal")
+
+    def test_sec_companyfacts_derives_matching_q2_cash_flow_from_ytd(self) -> None:
+        def fact(entries: list[dict[str, object]]) -> dict[str, object]:
+            return {"units": {"USD": entries}}
+
+        q1 = {"start": "2025-01-01", "end": "2025-03-31", "filed": "2025-05-01", "form": "10-Q", "frame": "CY2025Q1", "fy": 2025, "fp": "Q1", "accn": "q1"}
+        q2_ytd = {"start": "2025-01-01", "end": "2025-06-30", "filed": "2025-08-01", "form": "10-Q", "fy": 2025, "fp": "Q2", "accn": "q2"}
+        payload = {"facts": {"us-gaap": {
+            "NetCashProvidedByUsedInOperatingActivities": fact([{**q1, "val": 100}, {**q2_ytd, "val": 260}]),
+            "PaymentsToAcquirePropertyPlantAndEquipment": fact([{**q1, "val": 40}, {**q2_ytd, "val": 110}]),
+        }}}
+
+        with patch("app.providers.http._get", return_value=json.dumps(payload).encode()):
+            observations = FreeMarketDataProvider()._sec_fundamentals(
+                "alphabet_c", "GOOG", datetime(2025, 8, 10, tzinfo=timezone.utc)
+            )
+
+        by_id = {item["metric_id"]: item for item in observations}
+        self.assertEqual(by_id["sec_operating_cash_flow"]["value"], "160")
+        self.assertEqual(by_id["sec_operating_cash_flow"]["period_basis"], "derived_quarter_from_ytd")
+        self.assertEqual(by_id["sec_operating_cash_flow"]["derived_from"], ["q1", "q2"])
+        self.assertEqual(by_id["sec_free_cash_flow"]["value"], "90")
+        self.assertEqual(by_id["sec_free_cash_flow"]["period_basis"], "derived_quarter_from_ytd")
+
+    def test_sec_companyfacts_does_not_derive_fcf_from_mismatched_basis(self) -> None:
+        def fact(entries: list[dict[str, object]]) -> dict[str, object]:
+            return {"units": {"USD": entries}}
+
+        direct = {"start": "2025-04-01", "end": "2025-06-30", "filed": "2025-08-01", "form": "10-Q", "frame": "CY2025Q2", "accn": "direct", "val": 160}
+        q1 = {"start": "2025-01-01", "end": "2025-03-31", "filed": "2025-05-01", "form": "10-Q", "frame": "CY2025Q1", "fy": 2025, "fp": "Q1", "accn": "q1", "val": 40}
+        q2_ytd = {"start": "2025-01-01", "end": "2025-06-30", "filed": "2025-08-01", "form": "10-Q", "fy": 2025, "fp": "Q2", "accn": "q2", "val": 110}
+        payload = {"facts": {"us-gaap": {
+            "NetCashProvidedByUsedInOperatingActivities": fact([direct]),
+            "PaymentsToAcquirePropertyPlantAndEquipment": fact([q1, q2_ytd]),
+        }}}
+
+        with patch("app.providers.http._get", return_value=json.dumps(payload).encode()):
+            observations = FreeMarketDataProvider()._sec_fundamentals(
+                "alphabet_c", "GOOG", datetime(2025, 8, 10, tzinfo=timezone.utc)
+            )
+
+        self.assertNotIn("sec_free_cash_flow", {item["metric_id"] for item in observations})
+
     def test_binance_structure_calculates_trend_momentum_and_volume(self) -> None:
         rows = []
         for index in range(220):

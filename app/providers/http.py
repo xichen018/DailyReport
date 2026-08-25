@@ -27,6 +27,24 @@ STOOQ_SYMBOLS = {
     "MU": "mu.us", "COHR": "cohr.us", "GOOG": "goog.us", "DJT": "djt.us",
     "CRWD": "crwd.us", "1772.HK": "1772.hk", "6166.HK": "6166.hk", "CL1": "cl.f",
 }
+SEC_CIKS = {
+    "CRWD": "0001535527",
+    "GOOG": "0001652044",
+    "DJT": "0001849635",
+    "MU": "0000723125",
+    "COHR": "0000820318",
+}
+SEC_FACTS = {
+    "revenue": ("收入", ("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet")),
+    "gross_profit": ("毛利润", ("GrossProfit",)),
+    "operating_income": ("营业利润", ("OperatingIncomeLoss",)),
+    "net_income": ("净利润", ("NetIncomeLoss",)),
+    "operating_cash_flow": ("经营现金流", ("NetCashProvidedByUsedInOperatingActivities",)),
+    "capex": ("资本开支", ("PaymentsToAcquirePropertyPlantAndEquipment",)),
+    "assets": ("总资产", ("Assets",)),
+    "equity": ("股东权益", ("StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest")),
+}
+SEC_INSTANT_METRICS = {"assets", "equity"}
 
 
 class _ScheduleTableParser(HTMLParser):
@@ -360,9 +378,202 @@ class FreeMarketDataProvider:
             "as_of": as_of.isoformat(), "source_url": url, "provider": "tencent-quote",
         }]
 
+    @staticmethod
+    def _sec_quarterly_entries(
+        units: dict[str, list[dict[str, Any]]],
+        *,
+        instant: bool,
+        as_of: datetime,
+    ) -> list[dict[str, Any]]:
+        entries = units.get("USD", [])
+        selected: dict[tuple[str, str], dict[str, Any]] = {}
+        frame_pattern = re.compile(r"^CY\d{4}Q[1-4]I$" if instant else r"^CY\d{4}Q[1-4]$")
+        for entry in entries:
+            if entry.get("form") not in {"10-Q", "10-K"}:
+                continue
+            filed = str(entry.get("filed") or "")
+            if not filed or date.fromisoformat(filed) > as_of.date():
+                continue
+            normalized = dict(entry)
+            if instant:
+                if not frame_pattern.fullmatch(str(entry.get("frame") or "")):
+                    continue
+                normalized["period_basis"] = "instant"
+            else:
+                start, end = entry.get("start"), entry.get("end")
+                if not start or not end:
+                    continue
+                duration = (date.fromisoformat(str(end)) - date.fromisoformat(str(start))).days
+                if not 60 <= duration <= 120:
+                    continue
+                frame = str(entry.get("frame") or "")
+                if frame_pattern.fullmatch(frame):
+                    normalized["period_basis"] = "reported_quarter"
+                elif entry.get("form") == "10-Q" and entry.get("fy") is not None and entry.get("fp") in {"Q1", "Q2", "Q3"}:
+                    normalized["frame"] = f"FY{entry.get('fy')}{entry.get('fp')}"
+                    normalized["period_basis"] = "reported_quarter_fiscal"
+                else:
+                    continue
+            key = (str(normalized.get("frame")), str(normalized.get("end")))
+            current = selected.get(key)
+            if current is None or (filed, str(entry.get("accn") or "")) > (
+                str(current.get("filed") or ""), str(current.get("accn") or "")
+            ):
+                selected[key] = normalized
+        return sorted(selected.values(), key=lambda item: (str(item.get("end")), str(item.get("filed"))))
+
+    @staticmethod
+    def _sec_derived_quarterly_entries(
+        units: dict[str, list[dict[str, Any]]],
+        *,
+        as_of: datetime,
+    ) -> list[dict[str, Any]]:
+        eligible = []
+        for entry in units.get("USD", []):
+            if entry.get("form") != "10-Q" or entry.get("fp") not in {"Q2", "Q3"}:
+                continue
+            filed, start, end = str(entry.get("filed") or ""), entry.get("start"), entry.get("end")
+            if not filed or not start or not end or date.fromisoformat(filed) > as_of.date():
+                continue
+            duration = (date.fromisoformat(str(end)) - date.fromisoformat(str(start))).days
+            if duration <= 120:
+                continue
+            eligible.append(entry)
+
+        derived: list[dict[str, Any]] = []
+        all_entries = units.get("USD", [])
+        for cumulative in eligible:
+            candidates = []
+            for prior in all_entries:
+                if (
+                    prior.get("start") != cumulative.get("start")
+                    or prior.get("fy") != cumulative.get("fy")
+                    or prior.get("form") != "10-Q"
+                    or str(prior.get("end") or "") >= str(cumulative.get("end") or "")
+                    or date.fromisoformat(str(prior.get("filed") or "9999-12-31")) > as_of.date()
+                ):
+                    continue
+                gap = (date.fromisoformat(str(cumulative["end"])) - date.fromisoformat(str(prior["end"]))).days
+                if 60 <= gap <= 120:
+                    candidates.append(prior)
+            if not candidates:
+                continue
+            prior = max(candidates, key=lambda item: (str(item.get("end")), str(item.get("filed") or "")))
+            item = dict(cumulative)
+            item["val"] = Decimal(str(cumulative["val"])) - Decimal(str(prior["val"]))
+            item["start"] = (date.fromisoformat(str(prior["end"])) + timedelta(days=1)).isoformat()
+            item["frame"] = str(cumulative.get("frame") or f"FY{cumulative.get('fy')}{cumulative.get('fp')}")
+            item["period_basis"] = "derived_quarter_from_ytd"
+            item["derived_from"] = [str(prior.get("accn") or ""), str(cumulative.get("accn") or "")]
+            derived.append(item)
+        return derived
+
+    def _sec_fundamentals(
+        self,
+        instrument_id: str,
+        symbol: str,
+        as_of: datetime,
+    ) -> list[dict[str, Any]]:
+        cik = SEC_CIKS[symbol]
+        url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+        payload = json.loads(_get(url, self.timeout))
+        us_gaap = payload.get("facts", {}).get("us-gaap", {})
+        observations: list[dict[str, Any]] = []
+        latest_by_metric: dict[str, dict[str, Any]] = {}
+
+        for metric_id, (label, tags) in SEC_FACTS.items():
+            entries: list[dict[str, Any]] = []
+            for tag in tags:
+                fact = us_gaap.get(tag)
+                if not fact:
+                    continue
+                tag_entries = self._sec_quarterly_entries(
+                    fact.get("units", {}),
+                    instant=metric_id in SEC_INSTANT_METRICS,
+                    as_of=as_of,
+                )
+                if metric_id in {"operating_cash_flow", "capex"}:
+                    tag_entries += self._sec_derived_quarterly_entries(fact.get("units", {}), as_of=as_of)
+                for entry in tag_entries:
+                    entries.append({**entry, "_tag": tag})
+            if not entries:
+                continue
+            deduplicated: dict[tuple[str, str], dict[str, Any]] = {}
+            for entry in entries:
+                key = (str(entry.get("frame")), str(entry.get("end")))
+                current = deduplicated.get(key)
+                if current is None or (str(entry.get("filed") or ""), str(entry.get("accn") or "")) > (
+                    str(current.get("filed") or ""), str(current.get("accn") or "")
+                ):
+                    deduplicated[key] = entry
+            entries = sorted(deduplicated.values(), key=lambda item: (str(item.get("end")), str(item.get("filed"))))
+            latest = entries[-1]
+            latest_frame = str(latest["frame"])
+            year_match = re.search(r"CY(\d{4})Q([1-4])", latest_frame)
+            prior = None
+            if year_match:
+                suffix = "I" if metric_id in SEC_INSTANT_METRICS else ""
+                prior_frame = f"CY{int(year_match.group(1)) - 1}Q{year_match.group(2)}{suffix}"
+                prior = next((entry for entry in reversed(entries) if entry.get("frame") == prior_frame), None)
+            elif latest.get("fy") is not None and latest.get("fp"):
+                prior = next((
+                    entry for entry in reversed(entries)
+                    if str(entry.get("fy")) == str(int(latest.get("fy")) - 1)
+                    and entry.get("fp") == latest.get("fp")
+                    and entry.get("period_basis") == latest.get("period_basis")
+                ), None)
+            value = Decimal(str(latest["val"]))
+            prior_value = Decimal(str(prior["val"])) if prior is not None else None
+            change_pct = None
+            if prior_value not in {None, Decimal("0")}:
+                change_pct = ((value - prior_value) / abs(prior_value) * 100).quantize(Decimal("0.01"))
+            filing_url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{str(latest.get('accn', '')).replace('-', '')}/"
+            observation = {
+                "metric_id": f"sec_{metric_id}", "instrument_id": instrument_id, "symbol": symbol,
+                "label": label, "value": str(value), "unit": "USD", "period_start": latest.get("start"),
+                "period_end": latest.get("end"), "frame": latest_frame, "form": latest.get("form"),
+                "fiscal_year": latest.get("fy"), "fiscal_period": latest.get("fp"),
+                "filed_at": latest.get("filed"), "accession": latest.get("accn"), "tag": latest.get("_tag"),
+                "period_basis": latest.get("period_basis"), "derived_from": latest.get("derived_from", []),
+                "prior_year_value": str(prior_value) if prior_value is not None else None,
+                "prior_year_period_end": prior.get("end") if prior is not None else None,
+                "change_pct": str(change_pct) if change_pct is not None else None,
+                "source_url": url, "filing_url": filing_url, "provider": "sec-companyfacts",
+            }
+            observations.append(observation)
+            latest_by_metric[metric_id] = observation
+
+        revenue = latest_by_metric.get("revenue")
+        operating_income = latest_by_metric.get("operating_income")
+        if revenue and operating_income and revenue["period_end"] == operating_income["period_end"] and revenue["period_basis"] == operating_income["period_basis"]:
+            revenue_value = Decimal(revenue["value"])
+            if revenue_value:
+                observations.append({
+                    "metric_id": "sec_operating_margin", "instrument_id": instrument_id, "symbol": symbol,
+                    "label": "营业利润率", "value": str((Decimal(operating_income["value"]) / revenue_value * 100).quantize(Decimal("0.01"))),
+                    "unit": "%", "period_end": revenue["period_end"], "form": revenue["form"],
+                    "filed_at": revenue["filed_at"], "source_url": url, "filing_url": revenue["filing_url"],
+                    "provider": "sec-companyfacts-derived", "derived_from": ["sec_revenue", "sec_operating_income"],
+                    "period_basis": revenue["period_basis"],
+                })
+        operating_cash_flow = latest_by_metric.get("operating_cash_flow")
+        capex = latest_by_metric.get("capex")
+        if operating_cash_flow and capex and operating_cash_flow["period_end"] == capex["period_end"] and operating_cash_flow["period_basis"] == capex["period_basis"]:
+            observations.append({
+                "metric_id": "sec_free_cash_flow", "instrument_id": instrument_id, "symbol": symbol,
+                "label": "自由现金流", "value": str(Decimal(operating_cash_flow["value"]) - Decimal(capex["value"])),
+                "unit": "USD", "period_end": operating_cash_flow["period_end"], "form": operating_cash_flow["form"],
+                "filed_at": operating_cash_flow["filed_at"], "source_url": url,
+                "filing_url": operating_cash_flow["filing_url"], "provider": "sec-companyfacts-derived",
+                "derived_from": ["sec_operating_cash_flow", "sec_capex"],
+                "period_basis": operating_cash_flow["period_basis"],
+            })
+        return observations
+
     def get_task_data(self, module: ModuleConfig, as_of: datetime) -> dict[str, Any]:
         records: list[dict[str, Any]] = []
         signals: list[dict[str, Any]] = []
+        fundamentals: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
         for instrument in module.instruments:
             if instrument.symbol == "BTCUSDT":
@@ -412,12 +623,17 @@ class FreeMarketDataProvider:
                     records.extend(self._tencent_hk(instrument.instrument_id, instrument.symbol))
                 except Exception as exc:
                     errors.append(_error("tencent-quote", exc))
+            if instrument.symbol in SEC_CIKS:
+                try:
+                    fundamentals.extend(self._sec_fundamentals(instrument.instrument_id, instrument.symbol, as_of))
+                except Exception as exc:
+                    errors.append(_error("sec-companyfacts", exc))
             if instrument.symbol in STOOQ_SYMBOLS:
                 try:
                     records.extend(self._stooq(instrument.instrument_id, instrument.symbol, instrument.currency))
                 except Exception as exc:
                     errors.append(_error("stooq", exc))
-        return {"provider": self.name, "records": records, "signals": signals, "errors": errors, "as_of": as_of.isoformat()}
+        return {"provider": self.name, "records": records, "signals": signals, "fundamentals": fundamentals, "errors": errors, "as_of": as_of.isoformat()}
 
 
 class FreeNewsProvider:
