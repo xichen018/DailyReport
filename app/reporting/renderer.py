@@ -209,11 +209,15 @@ def _previous_close(price: object, prices: list[object]) -> object | None:
 def _upcoming_event_entries(results: list[ResearchTaskResult]) -> list[tuple[ResearchTaskResult, object]]:
     entries: list[tuple[ResearchTaskResult, object]] = []
     seen: set[tuple[str, str]] = set()
-    macro_results = [result for result in results if result.task_id == "macro_market" and result.upcoming_events]
-    event_results = macro_results or results
-    for result in event_results:
+    macro_event_times = {
+        event.event_at for result in results if result.task_id == "macro_market" for event in result.upcoming_events
+    }
+    ordered_results = sorted(results, key=lambda result: result.task_id != "macro_market")
+    for result in ordered_results:
         for event in result.upcoming_events:
             if event.confirmation_status.value != "confirmed":
+                continue
+            if result.task_id != "macro_market" and event.event_at in macro_event_times:
                 continue
             key = (event.event_at.isoformat(), re.sub(r"\W+", "", event.title_zh).casefold())
             if key in seen:

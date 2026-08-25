@@ -45,6 +45,18 @@ SEC_FACTS = {
     "equity": ("股东权益", ("StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest")),
 }
 SEC_INSTANT_METRICS = {"assets", "equity"}
+OFFICIAL_COMPANY_EVENTS = ({
+    "task_id": "cybersecurity",
+    "instrument_id": "crowdstrike",
+    "title": "CrowdStrike Fiscal Second Quarter 2027 Results and Conference Call",
+    "published_at": "2026-08-04T00:00:00-04:00",
+    "event_at": "2026-08-27T05:00:00+08:00",
+    "original_timezone": "America/New_York",
+    "original_time_label": "2026-08-26 17:00 EDT",
+    "publisher": "CrowdStrike Investor Relations",
+    "provider": "company-ir-calendar",
+    "url": "https://ir.crowdstrike.com/news-releases/news-release-details/crowdstrike-announces-date-fiscal-second-quarter-2027-financial",
+},)
 
 
 class _ScheduleTableParser(HTMLParser):
@@ -883,6 +895,25 @@ class FreeNewsProvider:
             except Exception as exc:
                 errors.append(_error("bea-official-calendar", exc))
                 queries.append({"provider": "bea-official-calendar", "status": "failed", "returned": 0})
+        for item in OFFICIAL_COMPANY_EVENTS:
+            event_at = datetime.fromisoformat(item["event_at"])
+            if item["task_id"] != module.task_id or not end_at < event_at <= end_at + timedelta(days=7):
+                continue
+            policy = source_policy(item["url"], item["publisher"])
+            window_articles.append({
+                "instrument_id": item["instrument_id"], "headline": item["title"], "description": "",
+                "published_at": item["published_at"], "publisher": item["publisher"], "url": item["url"],
+                "provider": item["provider"], "language": "en", "background_candidate": True,
+                "upcoming_candidate": True, "source_tier": policy.tier,
+                "content_access": policy.content_access, "evidence_role": policy.role, "author": None,
+            })
+            upcoming_events.append({
+                "title": item["title"], "event_at": item["event_at"], "event_end_at": None,
+                "original_timezone": item["original_timezone"], "original_time_label": item["original_time_label"],
+                "all_day": False, "confirmation_status": "confirmed", "last_verified_at": end_at.isoformat(),
+                "publisher": item["publisher"], "url": item["url"], "provider": item["provider"],
+            })
+            queries.append({"provider": item["provider"], "status": "success", "returned": 1})
         return {
             "provider": self.name,
             "articles": window_articles,

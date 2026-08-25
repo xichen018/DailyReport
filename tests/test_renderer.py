@@ -85,6 +85,10 @@ class RendererTests(unittest.TestCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0][0].task_id, "macro_market")
 
+        asset_result.upcoming_events[0].event_at = asset_result.upcoming_events[0].event_at.replace(hour=23)
+        entries = _upcoming_event_entries([asset_result, macro_result])
+        self.assertEqual(len(entries), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

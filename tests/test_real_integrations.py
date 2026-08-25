@@ -382,6 +382,19 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual(events[0]["original_time_label"], "2026-08-26 08:30 EDT")
         self.assertEqual(articles[0]["source_tier"], "primary")
 
+    def test_crowdstrike_official_ir_earnings_event_is_in_calendar(self) -> None:
+        module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "cybersecurity")
+        with patch("app.providers.http._get", side_effect=lambda url, _: b'{"articles": []}' if "gdeltproject.org" in url else b"<rss><channel></channel></rss>"):
+            result = FreeNewsProvider(None).get_task_data(
+                module,
+                datetime(2026, 8, 24, 5, 0, tzinfo=ZoneInfo("Asia/Hong_Kong")),
+                datetime(2026, 8, 25, 11, 0, tzinfo=ZoneInfo("Asia/Hong_Kong")),
+            )
+        event = next(item for item in result["upcoming_events"] if item["provider"] == "company-ir-calendar")
+        self.assertEqual(event["event_at"], "2026-08-27T05:00:00+08:00")
+        self.assertEqual(event["original_time_label"], "2026-08-26 17:00 EDT")
+        self.assertEqual(event["confirmation_status"], "confirmed")
+
     def test_macro_ratio_is_calculated_by_provider_for_all_periods(self) -> None:
         module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "macro_market")
         end_at = datetime(2026, 8, 18, tzinfo=ZoneInfo("Asia/Hong_Kong"))
