@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from app.reporting.renderer import _html_rationale, _html_report, _rationale_sections, _reader_datetime_text
+from app.reporting.renderer import _html_rationale, _html_report, _rationale_sections, _reader_datetime_text, _upcoming_event_entries
 from app.schemas.models import Impact, InstrumentResult, InvestmentAnalysis, MarketObservation, NewsItem, PricePoint, ResearchTaskResult, RunContext, Source, TaskStatus, UpcomingEvent, Window
 
 
@@ -76,6 +76,14 @@ class RendererTests(unittest.TestCase):
         self.assertIn("08月25日 22:00 HKT（2026-08-25 10:00 EDT）", rendered)
         self.assertIn("预期 92.0 / 前值 93.1", rendered)
         self.assertGreater(rendered.index("未来一周关键事件"), rendered.index("关键价位与应对"))
+
+        macro_result = result.model_copy(deep=True)
+        macro_result.task_id = "macro_market"
+        asset_result = result.model_copy(deep=True)
+        asset_result.upcoming_events[0].title_zh = "同一宏观事件的资产化改写"
+        entries = _upcoming_event_entries([asset_result, macro_result])
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0][0].task_id, "macro_market")
 
 
 if __name__ == "__main__":

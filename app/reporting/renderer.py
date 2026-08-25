@@ -209,7 +209,9 @@ def _previous_close(price: object, prices: list[object]) -> object | None:
 def _upcoming_event_entries(results: list[ResearchTaskResult]) -> list[tuple[ResearchTaskResult, object]]:
     entries: list[tuple[ResearchTaskResult, object]] = []
     seen: set[tuple[str, str]] = set()
-    for result in results:
+    macro_results = [result for result in results if result.task_id == "macro_market" and result.upcoming_events]
+    event_results = macro_results or results
+    for result in event_results:
         for event in result.upcoming_events:
             if event.confirmation_status.value != "confirmed":
                 continue
