@@ -13,12 +13,13 @@
 - Google News RSS 与 GDELT 2.0 提供无需密钥的中英文候选新闻；Marketaux 仅作可选增强。
 - FRED 公共 CSV：VIX、CPI、联邦基金有效利率基础数据。
 - SEC Company Facts：为美股标的提供最近已申报季度的收入、利润、现金流、资本开支、资产和权益。程序合并同一指标的标准标签历史；对 10-Q 年初至今现金流，只在同一财政年度、同一起点且相邻期间可严格相减时还原单季值。只有期间和口径一致时才计算同比、营业利润率与自由现金流，并保留表单、申报日、accession、`period_basis` 和派生来源审计字段。
+- EIA Weekly Petroleum Status Report：为WTI提供同一报告周的美国商业原油（不含SPR）、汽油和馏分油库存，只保留当前值、周环比与同比。三类库存必须完整且来自库存表同一段，否则整组拒绝；正文要求先解释库存组合的供需含义，再用技术结构判断交易时点。
 - AWS Secrets Manager JSON 与本地环境变量两种 secret 注入；所有落盘数据均不含 secret value。
 - 模型结果对 provider bundle 二次校验：价格值/前值、新闻 URL、宏观 metric ID、相对指标 ID 必须来自本次原始候选数据。
 
 ## 当前验证
 
-- 73 项自动化测试通过。
+- 78 项自动化测试通过。
 - OpenAI SDK 当前版本确认提供 `client.responses.parse(..., text_format=ResearchTaskResult)`。
 - Binance 公共行情实测成功。
 - 免费源 HTTP 层已加入连接重试；免费站点仍可能出现限流、地区限制或标的缺失，系统保留结构化错误。

@@ -57,6 +57,12 @@ OFFICIAL_COMPANY_EVENTS = ({
     "provider": "company-ir-calendar",
     "url": "https://ir.crowdstrike.com/news-releases/news-release-details/crowdstrike-announces-date-fiscal-second-quarter-2027-financial",
 },)
+EIA_WPSR_TABLE1_URL = "https://ir.eia.gov/wpsr/table1.csv"
+EIA_STOCK_ROWS = {
+    "Commercial (Excluding SPR)": ("eia_commercial_crude_stocks", "EIA美国商业原油库存（不含SPR）"),
+    "Total Motor Gasoline": ("eia_motor_gasoline_stocks", "EIA美国车用汽油库存"),
+    "Distillate Fuel Oil": ("eia_distillate_stocks", "EIA美国馏分油库存"),
+}
 
 
 class _ScheduleTableParser(HTMLParser):
@@ -373,6 +379,57 @@ class FreeMarketDataProvider:
             "as_of": f"{current['Date']}T00:00:00+00:00", "source_url": url, "provider": "stooq",
         }]
 
+    def _eia_petroleum_stocks(self) -> list[dict[str, Any]]:
+        rows = csv.reader(io.StringIO(_get(EIA_WPSR_TABLE1_URL, self.timeout).decode("utf-8-sig")))
+        header: list[str] | None = None
+        selected: dict[str, list[str]] = {}
+        for row in rows:
+            if not row:
+                continue
+            if row[0].strip() == "STUB_1":
+                if header is not None:
+                    break
+                if len(row) < 8 or not re.fullmatch(r"\d{1,2}/\d{1,2}/\d{2}", row[1].strip()):
+                    continue
+                header = [item.strip() for item in row]
+                continue
+            if header is not None and row[0].strip() in EIA_STOCK_ROWS:
+                selected[row[0].strip()] = row
+
+        missing = set(EIA_STOCK_ROWS) - set(selected)
+        if header is None or missing:
+            raise ValueError(f"incomplete EIA WPSR stock section: {sorted(missing)}")
+        report_week = datetime.strptime(header[1], "%m/%d/%y").date().isoformat()
+        observations: list[dict[str, Any]] = []
+        for row_name, (metric_id, label) in EIA_STOCK_ROWS.items():
+            row = selected[row_name]
+            if len(row) < 8:
+                raise ValueError(f"incomplete EIA WPSR row: {row_name}")
+            values = [item.strip().replace(",", "") for item in row[1:8]]
+            try:
+                for value in values:
+                    Decimal(value)
+            except Exception as exc:
+                raise ValueError(f"invalid EIA WPSR value: {row_name}") from exc
+            observations.append({
+                "metric_id": metric_id,
+                "instrument_id": "wti_front_month",
+                "label": label,
+                "value": values[0],
+                "previous_value": values[1],
+                "change_value": values[2],
+                "change_pct": values[3],
+                "prior_year_value": values[4],
+                "yoy_change_value": values[5],
+                "yoy_change_pct": values[6],
+                "unit": "million_barrels",
+                "as_of": f"{report_week}T00:00:00+00:00",
+                "report_week": report_week,
+                "source_url": EIA_WPSR_TABLE1_URL,
+                "provider": "eia-wpsr",
+            })
+        return observations
+
     def _tencent_hk(self, instrument_id: str, symbol: str) -> list[dict[str, Any]]:
         numeric = symbol.split(".", 1)[0].zfill(5)
         url = f"https://qt.gtimg.cn/q=hk{numeric}"
@@ -587,6 +644,11 @@ class FreeMarketDataProvider:
         signals: list[dict[str, Any]] = []
         fundamentals: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
+        if any(instrument.symbol == "CL1" for instrument in module.instruments):
+            try:
+                signals.extend(self._eia_petroleum_stocks())
+            except Exception as exc:
+                errors.append(_error("eia-wpsr", exc))
         for instrument in module.instruments:
             if instrument.symbol == "BTCUSDT":
                 try:

@@ -6,7 +6,7 @@ import unittest
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from app.integrations.secrets import load_secrets
@@ -237,6 +237,51 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertTrue(all(value > closes[-1] for value in resistances))
         self.assertLessEqual(len(supports), 2)
         self.assertLessEqual(len(resistances), 2)
+
+    def test_eia_wpsr_parses_complete_stock_section_with_weekly_and_yoy_comparisons(self) -> None:
+        payload = b'''title\nSTUB_1,8/14/26,8/7/26,Difference,Percent Change,8/15/25,Difference,Percent Change\nCommercial (Excluding SPR),"428,815",424.410,4.405,1.000,420.684,8.130,1.900\nTotal Motor Gasoline,209.378,208.690,0.688,0.300,223.570,-14.192,-6.300\nDistillate Fuel Oil,105.619,107.149,-1.530,-1.400,116.028,-10.409,-9.000\nSTUB_1,STUB_2,STUB_3\nCommercial (Excluding SPR),999,999,0,0,999,0,0\n'''
+        with patch("app.providers.http._get", return_value=payload):
+            observations = FreeMarketDataProvider()._eia_petroleum_stocks()
+
+        by_id = {item["metric_id"]: item for item in observations}
+        crude = by_id["eia_commercial_crude_stocks"]
+        self.assertEqual(len(observations), 3)
+        self.assertEqual(crude["value"], "428815")
+        self.assertEqual(crude["report_week"], "2026-08-14")
+        self.assertEqual(crude["yoy_change_pct"], "1.900")
+        self.assertEqual(by_id["eia_distillate_stocks"]["change_value"], "-1.530")
+
+    def test_eia_wpsr_rejects_incomplete_or_mixed_stock_sections(self) -> None:
+        payload = b'''STUB_1,8/14/26,8/7/26,Difference,Percent Change,8/15/25,Difference,Percent Change\nCommercial (Excluding SPR),428.815,424.410,4.405,1.000,420.684,8.130,1.900\nTotal Motor Gasoline,209.378,208.690,0.688,0.300,223.570,-14.192,-6.300\nSTUB_1,STUB_2,STUB_3\nDistillate Fuel Oil,105.619,107.149,-1.530,-1.400,116.028,-10.409,-9.000\n'''
+        with patch("app.providers.http._get", return_value=payload):
+            with self.assertRaisesRegex(ValueError, "incomplete EIA WPSR stock section"):
+                FreeMarketDataProvider()._eia_petroleum_stocks()
+
+    def test_cross_asset_fetches_eia_stocks_once(self) -> None:
+        module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "cross_asset")
+        eia_signal = {
+            "metric_id": "eia_commercial_crude_stocks", "instrument_id": "wti_front_month",
+            "label": "EIA美国商业原油库存（不含SPR）", "value": "428.815", "unit": "million_barrels",
+            "as_of": "2026-08-14T00:00:00+00:00", "source_url": "https://ir.eia.gov/wpsr/table1.csv",
+            "provider": "eia-wpsr",
+        }
+        provider = FreeMarketDataProvider(calendar=MagicMock())
+        provider.calendar.latest_closed_session.return_value = date(2026, 8, 25)
+        with (
+            patch.object(provider, "_eia_petroleum_stocks", return_value=[eia_signal]) as eia,
+            patch.object(provider, "_binance", return_value=[]),
+            patch.object(provider, "_binance_30h", return_value=[]),
+            patch.object(provider, "_coingecko", return_value=[]),
+            patch.object(provider, "_binance_structure", return_value=[]),
+            patch.object(provider, "_binance_derivatives", return_value=[]),
+            patch.object(provider, "_yahoo", return_value=[]),
+            patch.object(provider, "_yahoo_structure", return_value=[]),
+            patch.object(provider, "_stooq", return_value=[]),
+        ):
+            result = provider.get_task_data(module, datetime(2026, 8, 26, tzinfo=timezone.utc))
+
+        eia.assert_called_once_with()
+        self.assertIn(eia_signal, result["signals"])
 
     def test_tencent_hk_response_is_normalized(self) -> None:
         fields = [""] * 33
