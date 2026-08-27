@@ -380,7 +380,7 @@ class FreeMarketDataProvider:
         }]
 
     def _eia_petroleum_stocks(self) -> list[dict[str, Any]]:
-        rows = csv.reader(io.StringIO(_get(EIA_WPSR_TABLE1_URL, self.timeout).decode("utf-8-sig")))
+        rows = csv.reader(io.StringIO(_get(EIA_WPSR_TABLE1_URL, self.timeout).decode("cp1252")))
         header: list[str] | None = None
         selected: dict[str, list[str]] = {}
         for row in rows:

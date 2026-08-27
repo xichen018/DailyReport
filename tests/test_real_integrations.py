@@ -239,7 +239,7 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertLessEqual(len(resistances), 2)
 
     def test_eia_wpsr_parses_complete_stock_section_with_weekly_and_yoy_comparisons(self) -> None:
-        payload = b'''title\nSTUB_1,8/14/26,8/7/26,Difference,Percent Change,8/15/25,Difference,Percent Change\nCommercial (Excluding SPR),"428,815",424.410,4.405,1.000,420.684,8.130,1.900\nTotal Motor Gasoline,209.378,208.690,0.688,0.300,223.570,-14.192,-6.300\nDistillate Fuel Oil,105.619,107.149,-1.530,-1.400,116.028,-10.409,-9.000\nSTUB_1,STUB_2,STUB_3\nCommercial (Excluding SPR),999,999,0,0,999,0,0\n'''
+        payload = b'''title \x96 official note\nSTUB_1,8/14/26,8/7/26,Difference,Percent Change,8/15/25,Difference,Percent Change\nCommercial (Excluding SPR),"428,815",424.410,4.405,1.000,420.684,8.130,1.900\nTotal Motor Gasoline,209.378,208.690,0.688,0.300,223.570,-14.192,-6.300\nDistillate Fuel Oil,105.619,107.149,-1.530,-1.400,116.028,-10.409,-9.000\nSTUB_1,STUB_2,STUB_3\nCommercial (Excluding SPR),999,999,0,0,999,0,0\n'''
         with patch("app.providers.http._get", return_value=payload):
             observations = FreeMarketDataProvider()._eia_petroleum_stocks()
 
