@@ -68,6 +68,7 @@ class PipelineTests(unittest.TestCase):
                     self.assertIn("没有重大新闻不等于没有市场结构分析", call["prompt"]["module_instructions"])
                     self.assertIn("EIA Weekly Petroleum Status Report", call["prompt"]["module_instructions"])
                     self.assertIn("不得用单一库存序列直接断言需求", call["prompt"]["module_instructions"])
+                    self.assertIn("库存分化不是省略观点的理由", call["prompt"]["module_instructions"])
                 if call["task_id"] == "macro_market":
                     self.assertIn("固定数据检查与新闻筛选相互独立", call["prompt"]["module_instructions"])
                     self.assertIn("不得根据预定日历假设数据已经公布", call["prompt"]["module_instructions"])
