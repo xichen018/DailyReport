@@ -456,8 +456,18 @@ class RealIntegrationContractTests(unittest.TestCase):
             }[symbol]
             return list(zip(timestamps, values)), f"https://example.test/{symbol}"
 
-        csv_payload = b"observation_date,VIXCLS,CPIAUCSL,DFF\n2026-08-17,15.0,300.0,4.0\n"
-        with patch("app.providers.http._get", return_value=csv_payload), patch.object(
+        payloads = {
+            "VIXCLS": b"observation_date,VIXCLS\n2026-08-17,15.0\n",
+            "CPIAUCSL": b"observation_date,CPIAUCSL\n2026-07-01,300.0\n",
+            "DFF": b"observation_date,DFF\n2026-08-17,4.0\n",
+            "DGS10": b"observation_date,DGS10\n2026-08-17,4.2\n",
+            "DTWEXBGS": b"observation_date,DTWEXBGS\n2026-08-14,118.2\n",
+        }
+
+        def fake_get(url: str, _: float) -> bytes:
+            return next(payload for series, payload in payloads.items() if f"id={series}" in url)
+
+        with patch("app.providers.http._get", side_effect=fake_get), patch.object(
             FredMacroDataProvider, "_index_history", side_effect=fake_history
         ):
             result = FredMacroDataProvider().get_task_data(module, end_at.replace(day=17), end_at)
@@ -468,6 +478,13 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual(observations[0]["ratio"], "0.2500")
         self.assertEqual(observations[-1]["as_of"], "2026-01-02")
         self.assertEqual(observations[-1]["numerator_value"], "5000")
+        self.assertEqual(
+            {item["metric_id"] for item in result["observations"]},
+            {
+                "vixcls", "cpiaucsl", "dff", "dgs10", "dtwexbgs",
+                "nasdaq_daily_change", "sox_daily_change",
+            },
+        )
 
     def test_cross_asset_receives_fred_liquidity_series(self) -> None:
         module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "cross_asset")

@@ -72,7 +72,8 @@ class ModuleConfigTests(unittest.TestCase):
         self.assertTrue(any("超过1%" in item for item in by_id["us_semis_optics"].triggered_checks))
         self.assertTrue(any("明显下跌" in item for item in by_id["us_platform_media"].triggered_checks))
         macro = by_id["macro_market"]
-        self.assertEqual(len(macro.data_checks), 9)
+        self.assertEqual(len(macro.data_checks), 10)
+        self.assertTrue(any("10年期国债收益率" in item and "广义美元指数" in item for item in macro.data_checks))
         self.assertTrue(any("CME FedWatch" in item for item in macro.data_checks))
         self.assertTrue(any("S&P 500" in item and "NTM PE" in item for item in macro.data_checks))
         self.assertTrue(any("SOX" in item and "PB" in item for item in macro.data_checks))

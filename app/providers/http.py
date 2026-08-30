@@ -989,7 +989,13 @@ class FreeNewsProvider:
 
 class FredMacroDataProvider:
     name = "fred-public"
-    SERIES = {"VIXCLS": "VIX", "CPIAUCSL": "美国 CPI", "DFF": "联邦基金有效利率"}
+    SERIES = {
+        "VIXCLS": "VIX",
+        "CPIAUCSL": "美国 CPI",
+        "DFF": "联邦基金有效利率",
+        "DGS10": "美国10年期国债收益率",
+        "DTWEXBGS": "广义美元指数",
+    }
     BTC_LIQUIDITY_SERIES = {"DFF": "联邦基金有效利率", "DGS10": "美国10年期国债收益率", "DTWEXBGS": "广义美元指数"}
     SERIES_UNITS = {"VIXCLS": "index", "CPIAUCSL": "index", "DFF": "%", "DGS10": "%", "DTWEXBGS": "index"}
 
