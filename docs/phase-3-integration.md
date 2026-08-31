@@ -20,7 +20,7 @@
 
 ## 当前验证
 
-- 80 项自动化测试通过。
+- 81 项自动化测试通过。
 - OpenAI SDK 当前版本确认提供 `client.responses.parse(..., text_format=ResearchTaskResult)`。
 - Binance 公共行情实测成功。
 - 免费源 HTTP 层已加入连接重试；免费站点仍可能出现限流、地区限制或标的缺失，系统保留结构化错误。

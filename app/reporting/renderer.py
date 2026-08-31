@@ -60,6 +60,10 @@ def _reader_html(value: str) -> str:
     return html.escape(_reader_datetime_text(value))
 
 
+def _reader_unit(value: str) -> str:
+    return "" if value == "date_range" else value
+
+
 def _duplicated_catalysts(results: list[ResearchTaskResult]) -> set[str]:
     values = [
         analysis.catalysts_zh.strip()
@@ -380,7 +384,7 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
             body.append("</div>")
         if result.macro_observations:
             rows = "".join(
-                f"<tr><td>{html.escape(item.label)}</td><td>{html.escape(_format_number(item.value))}</td><td>{html.escape(item.unit)}</td><td>{_reader_html(item.period)}</td><td>{html.escape(_source_refs(item.source_ids, source_labels))}</td></tr>"
+                f"<tr><td>{html.escape(item.label)}</td><td>{html.escape(_format_number(item.value))}</td><td>{html.escape(_reader_unit(item.unit))}</td><td>{_reader_html(item.period)}</td><td>{html.escape(_source_refs(item.source_ids, source_labels))}</td></tr>"
                 for item in result.macro_observations
             )
             body.append("<table class='data-table'><thead><tr><th>指标</th><th>数值</th><th>单位</th><th>期间</th><th>来源</th></tr></thead><tbody>" + rows + "</tbody></table>")
@@ -688,7 +692,9 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
                 story.append(Paragraph(html.escape(item.summary_zh), styles["body"]))
                 story.extend(_pdf_rationale(item.rationale_zh, styles))
         for item in result.macro_observations:
-            story.append(Paragraph(f"{item.label}：{_format_number(item.value)} {item.unit}（{_reader_datetime_text(item.period)}）[{html.escape(_source_refs(item.source_ids, source_labels))}]", styles["body"]))
+            unit = _reader_unit(item.unit)
+            value_with_unit = f"{_format_number(item.value)} {unit}".strip()
+            story.append(Paragraph(f"{item.label}：{value_with_unit}（{_reader_datetime_text(item.period)}）[{html.escape(_source_refs(item.source_ids, source_labels))}]", styles["body"]))
         for metric in result.relative_metrics:
             story.append(Paragraph(f"{metric.numerator}/{metric.denominator}：{_reader_html(metric.interpretation_zh)} [{html.escape(_source_refs(metric.source_ids, source_labels))}]", styles["body"]))
         story.append(Spacer(1, 4 * mm))

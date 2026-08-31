@@ -3,11 +3,15 @@ from datetime import datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from app.reporting.renderer import _html_rationale, _html_report, _rationale_sections, _reader_datetime_text, _upcoming_event_entries
+from app.reporting.renderer import _html_rationale, _html_report, _rationale_sections, _reader_datetime_text, _reader_unit, _upcoming_event_entries
 from app.schemas.models import Impact, InstrumentResult, InvestmentAnalysis, MarketObservation, NewsItem, PricePoint, ResearchTaskResult, RunContext, Source, TaskStatus, UpcomingEvent, Window
 
 
 class RendererTests(unittest.TestCase):
+    def test_internal_date_range_unit_is_hidden_from_readers(self) -> None:
+        self.assertEqual(_reader_unit("date_range"), "")
+        self.assertEqual(_reader_unit("%"), "%")
+
     def test_reader_datetime_is_rendered_in_hong_kong_time(self) -> None:
         self.assertEqual(
             _reader_datetime_text("截至2026-08-21T04:00:00+00:00价格走弱。"),
