@@ -179,6 +179,7 @@ def validate_result(
     macro_metric_ids: set[str] = set()
     relative_metric_ids: set[str] = set()
     relative_metric_candidates: dict[str, dict[str, Any]] = {}
+    macro_metric_candidates: dict[str, dict[str, Any]] = {}
     market_signal_candidates: dict[tuple[str, str], dict[str, Any]] = {}
     if provider_data is not None:
         shared_news = provider_data.get("shared_context", {}).get("news", {})
@@ -203,6 +204,11 @@ def validate_result(
         news_urls = {canonical_url(url) for url in provider_news_urls}
         macro_metric_ids = {
             str(item["metric_id"])
+            for item in provider_data.get("macro", {}).get("observations", [])
+            if item.get("metric_id")
+        }
+        macro_metric_candidates = {
+            str(item["metric_id"]): item
             for item in provider_data.get("macro", {}).get("observations", [])
             if item.get("metric_id")
         }
@@ -567,6 +573,30 @@ def validate_result(
             raise ValidationFailure(f"macro observation has unknown source: {observation.metric_id}")
         if provider_data is not None and observation.metric_id not in macro_metric_ids:
             raise ValidationFailure(f"macro observation not found in provider data: {observation.metric_id}")
+        candidate = macro_metric_candidates.get(observation.metric_id)
+        if candidate is not None:
+            expected_value: Decimal | str
+            try:
+                expected_value = Decimal(str(candidate["value"]))
+            except Exception:
+                expected_value = str(candidate["value"])
+            expected_label = str(candidate["label"])
+            expected_unit = str(candidate["unit"])
+            expected_period = str(candidate["period"])
+            if (
+                observation.value != expected_value
+                or observation.label != expected_label
+                or observation.unit != expected_unit
+                or observation.period != expected_period
+            ):
+                warnings.append(TaskWarning(
+                    code="MACRO_OBSERVATION_PROVIDER_NORMALIZED",
+                    message_zh=f"已按数据源恢复宏观观测：{observation.metric_id}",
+                ))
+            observation.value = expected_value
+            observation.label = expected_label
+            observation.unit = expected_unit
+            observation.period = expected_period
     for metric in result.relative_metrics:
         if set(metric.source_ids) - source_ids:
             raise ValidationFailure(f"relative metric has unknown source: {metric.metric_id}")

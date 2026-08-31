@@ -75,6 +75,29 @@ class ValidatorTests(unittest.TestCase):
         self.assertEqual(actual.ratio, (Decimal(expected["numerator_value"]) / Decimal(expected["denominator_value"])).quantize(Decimal("0.0001")))
         self.assertTrue(any(item.code == "RELATIVE_METRIC_PROVIDER_NORMALIZED" for item in validated.warnings))
 
+    def test_macro_observation_is_restored_from_provider_value_and_period(self) -> None:
+        module = {item.task_id: item for item in load_module_configs(ROOT / "app" / "modules")}["macro_market"]
+        provider_data = {
+            "market": self.providers.market.get_task_data(module, self.context.scheduled_for),
+            "news": self.providers.news.get_task_data(module, self.context.window.start_at, self.context.window.end_at),
+            "macro": self.providers.macro.get_task_data(module, self.context.window.start_at, self.context.window.end_at),
+        }
+        prompt = PromptBuilder(ROOT / "app" / "prompts").build(module, self.context)
+        result = ResearchTaskResult.model_validate(MockResponsesClient().create(module, prompt, provider_data))
+        observation = result.macro_observations[0]
+        candidate = next(item for item in provider_data["macro"]["observations"] if item["metric_id"] == observation.metric_id)
+        observation.value = Decimal("999")
+        observation.unit = "wrong"
+        observation.period = "2099-01-01T00:00:00+08:00"
+
+        validated = validate_result(result, module, provider_data)
+        restored = next(item for item in validated.macro_observations if item.metric_id == observation.metric_id)
+
+        self.assertEqual(restored.value, Decimal(str(candidate["value"])))
+        self.assertEqual(restored.unit, candidate["unit"])
+        self.assertEqual(restored.period, candidate["period"])
+        self.assertTrue(any(item.code == "MACRO_OBSERVATION_PROVIDER_NORMALIZED" for item in validated.warnings))
+
     def test_fixed_data_check_cannot_be_not_triggered(self) -> None:
         module = {item.task_id: item for item in load_module_configs(ROOT / "app" / "modules")}["macro_market"]
         provider_data = {
