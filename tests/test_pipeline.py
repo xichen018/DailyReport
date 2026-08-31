@@ -74,6 +74,7 @@ class PipelineTests(unittest.TestCase):
                     self.assertIn("不得根据预定日历假设数据已经公布", call["prompt"]["module_instructions"])
                     self.assertIn("先识别市场结构，再解释原因", call["prompt"]["module_instructions"])
                     self.assertIn("不得声称输入缺少国债收益率或美元", call["prompt"]["module_instructions"])
+                    self.assertIn("会议日历不等于声明发布时间", call["prompt"]["module_instructions"])
                 if call["task_id"] == "cross_asset":
                     self.assertIn("不得因价格同时变化就认定因果", call["prompt"]["module_instructions"])
                 self.assertNotIn("必须检查 Marketaux", call["prompt"]["common_rules"])

@@ -63,6 +63,7 @@ EIA_STOCK_ROWS = {
     "Total Motor Gasoline": ("eia_motor_gasoline_stocks", "EIA美国车用汽油库存"),
     "Distillate Fuel Oil": ("eia_distillate_stocks", "EIA美国馏分油库存"),
 }
+FOMC_CALENDAR_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
 
 
 class _ScheduleTableParser(HTMLParser):
@@ -93,6 +94,43 @@ class _ScheduleTableParser(HTMLParser):
             if self._row:
                 self.rows.append(self._row)
             self._row = None
+
+
+class _FomcCalendarParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.meetings: list[tuple[int, str, str]] = []
+        self._year: int | None = None
+        self._capture: str | None = None
+        self._parts: list[str] = []
+        self._month = ""
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        if tag == "div":
+            css = attributes.get("class") or ""
+            if "fomc-meeting__month" in css:
+                self._capture, self._parts = "month", []
+            elif "fomc-meeting__date" in css:
+                self._capture, self._parts = "date", []
+
+    def handle_data(self, data: str) -> None:
+        text = data.strip()
+        year_match = re.fullmatch(r"(\d{4}) FOMC Meetings", text)
+        if year_match:
+            self._year = int(year_match.group(1))
+        if self._capture and text:
+            self._parts.append(text)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag != "div" or self._capture is None:
+            return
+        value = " ".join(self._parts).strip()
+        if self._capture == "month":
+            self._month = value
+        elif self._capture == "date" and self._year is not None and self._month:
+            self.meetings.append((self._year, self._month, value))
+        self._capture, self._parts = None, []
 
 
 def _get(url: str, timeout: float) -> bytes:
@@ -1012,6 +1050,43 @@ class FredMacroDataProvider:
             raise ValueError(f"insufficient index history for {symbol}")
         return values, url
 
+    def _next_fomc_meeting(self, end_at: datetime) -> dict[str, Any]:
+        parser = _FomcCalendarParser()
+        parser.feed(_get(FOMC_CALENDAR_URL, self.timeout).decode("utf-8", errors="replace"))
+        month_numbers = {
+            name: number for number, name in enumerate(
+                ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"),
+                start=1,
+            )
+        }
+        candidates: list[tuple[date, date]] = []
+        for year, month_text, date_text in parser.meetings:
+            if year < end_at.year or month_text not in month_numbers:
+                continue
+            match = re.fullmatch(r"(\d{1,2})(?:-(\d{1,2}))?\*?", date_text.strip())
+            if match is None:
+                continue
+            month = month_numbers[month_text]
+            start = date(year, month, int(match.group(1)))
+            end = date(year, month, int(match.group(2) or match.group(1)))
+            if end >= end_at.date():
+                candidates.append((start, end))
+        if not candidates:
+            raise ValueError("no upcoming FOMC meeting found in official calendar")
+        start, end = min(candidates)
+        return {
+            "metric_id": "next_fomc_meeting",
+            "label": "下一次FOMC会议",
+            "value": f"{start.isoformat()}至{end.isoformat()}",
+            "unit": "date_range",
+            "period": start.isoformat(),
+            "meeting_start": start.isoformat(),
+            "meeting_end": end.isoformat(),
+            "last_verified_at": end_at.isoformat(),
+            "url": FOMC_CALENDAR_URL,
+            "provider": "federal-reserve-fomc-calendar",
+        }
+
     @staticmethod
     def _nearest(values: list[tuple[int, float]], target: datetime) -> tuple[int, float]:
         target_ts = int(target.timestamp())
@@ -1022,6 +1097,10 @@ class FredMacroDataProvider:
             return {"provider": self.name, "observations": [], "relative_metrics": [], "errors": []}
         observations: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
+        try:
+            observations.append(self._next_fomc_meeting(end_at))
+        except Exception as exc:
+            errors.append(_error("federal-reserve-fomc-calendar", exc))
         series = self.SERIES if module.task_id == "macro_market" else self.BTC_LIQUIDITY_SERIES
         for series_id, label in series.items():
             start_date = (end_at - timedelta(days=400)).date().isoformat()

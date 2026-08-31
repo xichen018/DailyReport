@@ -504,6 +504,22 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual({item["metric_id"] for item in result["observations"]}, {"dff", "dgs10", "dtwexbgs"})
         self.assertEqual(result["relative_metrics"], [])
 
+    def test_fomc_calendar_selects_next_official_meeting_without_mixing_years(self) -> None:
+        payload = b'''<div><h4><a>2026 FOMC Meetings</a></h4>
+        <div class="fomc-meeting__month"><strong>July</strong></div><div class="fomc-meeting__date">28-29</div>
+        <div class="fomc-meeting__month"><strong>September</strong></div><div class="fomc-meeting__date">15-16*</div></div>
+        <div><h4><a>2025 FOMC Meetings</a></h4>
+        <div class="fomc-meeting__month"><strong>September</strong></div><div class="fomc-meeting__date">16-17*</div></div>'''
+        with patch("app.providers.http._get", return_value=payload):
+            observation = FredMacroDataProvider()._next_fomc_meeting(
+                datetime(2026, 8, 31, tzinfo=ZoneInfo("Asia/Hong_Kong"))
+            )
+
+        self.assertEqual(observation["value"], "2026-09-15至2026-09-16")
+        self.assertEqual(observation["meeting_start"], "2026-09-15")
+        self.assertEqual(observation["meeting_end"], "2026-09-16")
+        self.assertEqual(observation["provider"], "federal-reserve-fomc-calendar")
+
     def test_marketaux_token_is_not_returned_in_provider_bundle(self) -> None:
         module = next(item for item in load_module_configs(ROOT / "app" / "modules") if item.task_id == "cybersecurity")
         payloads = [json.dumps({"data": []}).encode(), b"<rss><channel></channel></rss>", b"<rss><channel></channel></rss>", b"<rss><channel></channel></rss>"]
