@@ -85,7 +85,8 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(len(list((run_dir / "validated").glob("*.json"))), 6)
             html_report = (run_dir / "reports" / "daily-report.html").read_text(encoding="utf-8")
             self.assertIn("展开完整来源审计记录", html_report)
-            self.assertIn("研究要求覆盖", html_report)
+            self.assertNotIn("研究要求覆盖", html_report)
+            self.assertNotIn("查看逐项研究清单", html_report)
             report_json = json.loads((run_dir / "reports" / "daily-report.json").read_text(encoding="utf-8"))
             self.assertTrue(all(task["research_checks"] for task in report_json["tasks"]))
             for task in report_json["tasks"]:

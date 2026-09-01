@@ -22,11 +22,6 @@ from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Space
 from app.schemas.models import ResearchTaskResult, RunContext, TaskStatus
 
 
-STATUS_ZH = {
-    TaskStatus.SUCCESS: "已更新",
-    TaskStatus.PARTIAL: "部分数据待补",
-    TaskStatus.FAILED: "数据待补",
-}
 IMPACT_ZH = {"positive": "利好", "negative": "利空", "neutral": "中性"}
 ASSET_CLASS_ZH = {"equity": "股票", "crypto": "加密资产", "future": "期货", "index": "指数"}
 PRICE_KIND_ZH = {
@@ -280,26 +275,10 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
         )
     sections: list[str] = []
     for section_number, result in enumerate(result_list, start=1):
-        status_class = "pending" if result.status != TaskStatus.SUCCESS else "ok"
         source_labels = _source_labels(result)
         body: list[str] = []
         if result.errors:
             body.append("<div class='data-note'><strong>本节数据待补</strong><p>当前资料不足以形成可靠结论，本节不作推断。</p></div>")
-        if result.research_checks:
-            unavailable = [item for item in result.research_checks if item.status.value == "data_unavailable"]
-            rows = "".join(
-                "<tr>"
-                f"<td>{html.escape(item.scope_id)}</td><td>{html.escape(item.requirement_zh)}</td>"
-                f"<td>{html.escape(item.status.value)}</td><td>{html.escape(item.conclusion_zh)}</td></tr>"
-                for item in result.research_checks
-            )
-            body.append(
-                f"<div class='coverage'><strong>研究要求覆盖：已核查 {len(result.research_checks) - len(unavailable)}/{len(result.research_checks)} 项</strong>"
-                f"<span>受限 {len(unavailable)} 项</span></div>"
-                "<details class='quality'><summary>查看逐项研究清单</summary>"
-                "<table class='data-table'><thead><tr><th>范围</th><th>必查项</th><th>状态</th><th>结论</th></tr></thead>"
-                f"<tbody>{rows}</tbody></table></details>"
-            )
         analyses_by_instrument = {item.instrument_id: item for item in result.investment_analyses}
         for instrument_number, instrument in enumerate(result.instruments, start=1):
             body.append(
@@ -404,7 +383,6 @@ def _html_report(context: RunContext, results: Iterable[ResearchTaskResult], mod
             body.append("</ol></details>")
         sections.append(
             f"<section><div class='section-head'><div><span class='section-no'>{section_number}</span><h2>{html.escape(result.title_zh)}</h2></div>"
-            + (f"<span class='status {status_class}'>{STATUS_ZH[result.status]}</span>" if result.status != TaskStatus.SUCCESS else "")
             + f"</div>{''.join(body)}</section>"
         )
 
@@ -601,18 +579,10 @@ def _pdf_report(path: Path, context: RunContext, results: Iterable[ResearchTaskR
     story.extend([snapshot_table, Spacer(1, 5 * mm)])
 
     for section_number, result in enumerate(result_list, start=1):
-        status_suffix = f" · {STATUS_ZH[result.status]}" if result.status != TaskStatus.SUCCESS else ""
         source_labels = _source_labels(result)
-        story.append(Paragraph(f"{section_number}  {result.title_zh}{status_suffix}", styles["h2"]))
+        story.append(Paragraph(f"{section_number}  {result.title_zh}", styles["h2"]))
         if result.errors:
             story.append(Paragraph("本节数据待补：当前资料不足以形成可靠结论，本节不作推断。", styles["meta"]))
-        if result.research_checks:
-            unavailable = sum(item.status.value == "data_unavailable" for item in result.research_checks)
-            covered = len(result.research_checks) - unavailable
-            coverage_text = f"研究覆盖：{covered}/{len(result.research_checks)}"
-            if unavailable:
-                coverage_text += f"；待补数据：{unavailable} 项"
-            story.append(Paragraph(coverage_text, styles["meta"]))
         analyses_by_instrument = {item.instrument_id: item for item in result.investment_analyses}
         for instrument_number, instrument in enumerate(result.instruments, start=1):
             instrument_heading = Paragraph(
