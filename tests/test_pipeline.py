@@ -59,6 +59,8 @@ class PipelineTests(unittest.TestCase):
                     self.assertIn("评级和目标价调整", call["prompt"]["module_instructions"])
                     self.assertIn("合并为一条机构观点汇总", call["prompt"]["module_instructions"])
                     self.assertIn("不使用固定栏目", call["prompt"]["module_instructions"])
+                    self.assertIn("流动性缓冲与再融资压力", call["prompt"]["module_instructions"])
+                    self.assertIn("不得把口径不完整的债务项目相加成净债务", call["prompt"]["module_instructions"])
                     self.assertIn("不预测股价", call["prompt"]["module_instructions"])
                     self.assertNotIn("未来 2-8 周", call["prompt"]["module_instructions"])
                     self.assertNotIn("180 个汉字", call["prompt"]["module_instructions"])

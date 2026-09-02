@@ -88,6 +88,12 @@ class RealIntegrationContractTests(unittest.TestCase):
                 "Assets": fact([
                     {"end": "2025-06-30", "filed": "2025-08-01", "form": "10-Q", "frame": "CY2025Q2I", "accn": "0001-25-000001", "val": 5000},
                 ]),
+                "CashAndCashEquivalentsAtCarryingValue": fact([
+                    {"end": "2025-06-30", "filed": "2025-08-01", "form": "10-Q", "frame": "CY2025Q2I", "accn": "0001-25-000001", "val": 900},
+                ]),
+                "LongTermDebtNoncurrent": fact([
+                    {"end": "2025-06-30", "filed": "2025-08-01", "form": "10-Q", "frame": "CY2025Q2I", "accn": "0001-25-000001", "val": 600},
+                ]),
             }}
         }
 
@@ -103,6 +109,9 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual(by_id["sec_operating_margin"]["value"], "20.00")
         self.assertEqual(by_id["sec_free_cash_flow"]["value"], "150")
         self.assertEqual(by_id["sec_assets"]["value"], "5000")
+        self.assertEqual(by_id["sec_cash"]["value"], "900")
+        self.assertEqual(by_id["sec_long_term_debt"]["value"], "600")
+        self.assertEqual(by_id["sec_long_term_debt"]["period_basis"], "instant")
         self.assertTrue(by_id["sec_revenue"]["source_url"].startswith("https://data.sec.gov/"))
 
     def test_sec_companyfacts_rejects_cumulative_and_future_facts(self) -> None:

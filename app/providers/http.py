@@ -43,8 +43,11 @@ SEC_FACTS = {
     "capex": ("资本开支", ("PaymentsToAcquirePropertyPlantAndEquipment",)),
     "assets": ("总资产", ("Assets",)),
     "equity": ("股东权益", ("StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest")),
+    "cash": ("现金及现金等价物", ("CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents")),
+    "current_debt": ("短期借款及一年内到期债务", ("LongTermDebtCurrent", "ShortTermBorrowings")),
+    "long_term_debt": ("长期债务", ("LongTermDebtNoncurrent", "LongTermDebtAndFinanceLeaseObligationsNoncurrent")),
 }
-SEC_INSTANT_METRICS = {"assets", "equity"}
+SEC_INSTANT_METRICS = {"assets", "equity", "cash", "current_debt", "long_term_debt"}
 OFFICIAL_COMPANY_EVENTS = ({
     "task_id": "cybersecurity",
     "instrument_id": "crowdstrike",
