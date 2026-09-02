@@ -65,6 +65,8 @@ class PipelineTests(unittest.TestCase):
                 if call["task_id"] == "cross_asset":
                     self.assertIn("provider_data.market.signals", call["prompt"]["module_instructions"])
                     self.assertIn("BTC投资观点应像机构研究结论", call["prompt"]["module_instructions"])
+                    self.assertIn("至少两类同向", call["prompt"]["module_instructions"])
+                    self.assertIn("不得因缺少当日黄金新闻而只保留价格表", call["prompt"]["module_instructions"])
                     self.assertIn("没有重大新闻不等于没有市场结构分析", call["prompt"]["module_instructions"])
                     self.assertIn("EIA Weekly Petroleum Status Report", call["prompt"]["module_instructions"])
                     self.assertIn("不得用单一库存序列直接断言需求", call["prompt"]["module_instructions"])
