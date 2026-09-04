@@ -654,6 +654,18 @@ class FreeMarketDataProvider:
             latest_by_metric[metric_id] = observation
 
         revenue = latest_by_metric.get("revenue")
+        gross_profit = latest_by_metric.get("gross_profit")
+        if revenue and gross_profit and revenue["period_end"] == gross_profit["period_end"] and revenue["period_basis"] == gross_profit["period_basis"]:
+            revenue_value = Decimal(revenue["value"])
+            if revenue_value:
+                observations.append({
+                    "metric_id": "sec_gross_margin", "instrument_id": instrument_id, "symbol": symbol,
+                    "label": "毛利率", "value": str((Decimal(gross_profit["value"]) / revenue_value * 100).quantize(Decimal("0.01"))),
+                    "unit": "%", "period_end": revenue["period_end"], "form": revenue["form"],
+                    "filed_at": revenue["filed_at"], "source_url": url, "filing_url": revenue["filing_url"],
+                    "provider": "sec-companyfacts-derived", "derived_from": ["sec_revenue", "sec_gross_profit"],
+                    "period_basis": revenue["period_basis"],
+                })
         operating_income = latest_by_metric.get("operating_income")
         if revenue and operating_income and revenue["period_end"] == operating_income["period_end"] and revenue["period_basis"] == operating_income["period_basis"]:
             revenue_value = Decimal(revenue["value"])

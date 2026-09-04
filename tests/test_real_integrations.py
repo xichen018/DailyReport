@@ -82,6 +82,7 @@ class RealIntegrationContractTests(unittest.TestCase):
         payload = {
             "facts": {"us-gaap": {
                 "RevenueFromContractWithCustomerExcludingAssessedTax": fact([{**prior, "val": 800}, {**latest, "val": 1000}]),
+                "GrossProfit": fact([{**prior, "val": 440}, {**latest, "val": 600}]),
                 "OperatingIncomeLoss": fact([{**prior, "val": 120}, {**latest, "val": 200}]),
                 "NetCashProvidedByUsedInOperatingActivities": fact([{**prior, "val": 180}, {**latest, "val": 250}]),
                 "PaymentsToAcquirePropertyPlantAndEquipment": fact([{**prior, "val": 80}, {**latest, "val": 100}]),
@@ -106,6 +107,9 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual(by_id["sec_revenue"]["change_pct"], "25.00")
         self.assertEqual(by_id["sec_revenue"]["period_end"], "2025-06-30")
         self.assertEqual(by_id["sec_revenue"]["form"], "10-Q")
+        self.assertEqual(by_id["sec_gross_profit"]["change_pct"], "36.36")
+        self.assertEqual(by_id["sec_gross_margin"]["value"], "60.00")
+        self.assertEqual(by_id["sec_gross_margin"]["derived_from"], ["sec_revenue", "sec_gross_profit"])
         self.assertEqual(by_id["sec_operating_margin"]["value"], "20.00")
         self.assertEqual(by_id["sec_free_cash_flow"]["value"], "150")
         self.assertEqual(by_id["sec_assets"]["value"], "5000")
@@ -113,6 +117,28 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual(by_id["sec_long_term_debt"]["value"], "600")
         self.assertEqual(by_id["sec_long_term_debt"]["period_basis"], "instant")
         self.assertTrue(by_id["sec_revenue"]["source_url"].startswith("https://data.sec.gov/"))
+
+    def test_sec_companyfacts_does_not_mix_periods_for_gross_margin(self) -> None:
+        def fact(entries: list[dict[str, object]]) -> dict[str, object]:
+            return {"units": {"USD": entries}}
+
+        payload = {"facts": {"us-gaap": {
+            "RevenueFromContractWithCustomerExcludingAssessedTax": fact([{
+                "start": "2025-04-01", "end": "2025-06-30", "filed": "2025-08-01",
+                "form": "10-Q", "frame": "CY2025Q2", "accn": "0001-25-000001", "val": 1000,
+            }]),
+            "GrossProfit": fact([{
+                "start": "2025-01-01", "end": "2025-03-31", "filed": "2025-05-01",
+                "form": "10-Q", "frame": "CY2025Q1", "accn": "0001-25-000002", "val": 600,
+            }]),
+        }}}
+
+        with patch("app.providers.http._get", return_value=json.dumps(payload).encode()):
+            observations = FreeMarketDataProvider()._sec_fundamentals(
+                "alphabet_c", "GOOG", datetime(2025, 8, 10, tzinfo=timezone.utc)
+            )
+
+        self.assertNotIn("sec_gross_margin", {item["metric_id"] for item in observations})
 
     def test_sec_companyfacts_rejects_cumulative_and_future_facts(self) -> None:
         units = {"USD": [
