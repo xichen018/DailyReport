@@ -35,7 +35,12 @@ SEC_CIKS = {
     "COHR": "0000820318",
 }
 SEC_FACTS = {
-    "revenue": ("收入", ("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet")),
+    "revenue": ("收入", (
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "RevenueFromContractWithCustomerIncludingAssessedTax",
+        "Revenues",
+        "SalesRevenueNet",
+    )),
     "gross_profit": ("毛利润", ("GrossProfit",)),
     "operating_income": ("营业利润", ("OperatingIncomeLoss",)),
     "net_income": ("净利润", ("NetIncomeLoss",)),

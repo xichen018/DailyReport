@@ -173,6 +173,34 @@ class RealIntegrationContractTests(unittest.TestCase):
         self.assertEqual(revenue["tag"], "Revenues")
         self.assertEqual(revenue["change_pct"], "25.00")
 
+    def test_sec_companyfacts_supports_crowdstrike_revenue_tag(self) -> None:
+        def fact(entries: list[dict[str, object]]) -> dict[str, object]:
+            return {"units": {"USD": entries}}
+
+        prior = {
+            "start": "2025-05-01", "end": "2025-07-31", "filed": "2026-08-27",
+            "form": "10-Q", "frame": "CY2025Q2", "fy": 2027, "fp": "Q2", "accn": "prior",
+            "val": 1168952000,
+        }
+        latest = {
+            "start": "2026-05-01", "end": "2026-07-31", "filed": "2026-08-27",
+            "form": "10-Q", "frame": "CY2026Q2", "fy": 2027, "fp": "Q2", "accn": "latest",
+            "val": 1470897000,
+        }
+        payload = {"facts": {"us-gaap": {
+            "RevenueFromContractWithCustomerIncludingAssessedTax": fact([prior, latest]),
+        }}}
+
+        with patch("app.providers.http._get", return_value=json.dumps(payload).encode()):
+            observations = FreeMarketDataProvider()._sec_fundamentals(
+                "crowdstrike", "CRWD", datetime(2026, 9, 5, tzinfo=timezone.utc)
+            )
+
+        revenue = next(item for item in observations if item["metric_id"] == "sec_revenue")
+        self.assertEqual(revenue["value"], "1470897000")
+        self.assertEqual(revenue["change_pct"], "25.83")
+        self.assertEqual(revenue["tag"], "RevenueFromContractWithCustomerIncludingAssessedTax")
+
     def test_sec_companyfacts_accepts_unframed_fiscal_quarter(self) -> None:
         units = {"USD": [{
             "start": "2025-02-01", "end": "2025-04-30", "filed": "2025-06-01",
